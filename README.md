@@ -71,28 +71,19 @@ yahoo_auction_scraper/
                 ├── image_downloader.py    # 画像取得（クラス名：ImageDownloader）
                 ├── spreadsheet_read.py    # スプシ読取（クラス名：SpreadsheetReader）
                 ├── spreadsheet_write.py   # スプシ書込（クラス名：SpreadsheetWriter）
+                └── number_calculator.py   # 数値計算（クラス名：PriceCalculator）
+                └── url_builder.py         # URL作成（クラス名：UrlBuilder）
                 └── utils.py               # 汎用関数（クラス名なし or Utils）
 
 
 ## クラス構成（flow/base）
-
-本プロジェクトでは、処理を責務ごとにクラス分割しており、以下のクラスを使用します。
-※ クラス名はすべてキャメルケースで統一し、**メンターが指定したものを使用してください。**
-
-| ファイル名 | クラス名 | 主な責務 |
-|------------|----------|----------|
-| `chrome.py` | `Chrome` | ChromeDriverの起動・オプション設定 |
-| `selenium.py` | `Selenium` | 要素取得・クリック・テキスト抽出などの基本操作 |
-| `image_downloader.py` | `ImageDownloader` | 画像URLの取得と保存 |
-| `spreadsheet_read.py` | `SpreadsheetReader` | Googleスプレッドシートからの読取 |
-| `spreadsheet_write.py` | `SpreadsheetWriter` | Googleスプレッドシートへの書込 |
-| `utils.py` | `Utils` | 汎用処理 |
+<!-- TODO 後でまとめる -->
 
 > **注意**：各クラスの中身の実装も指定された責務に沿って行ってください。
 > 拡張や追加クラスが必要な場合は、事前に相談すること。
 
 
-## 🔤 命名ルール
+## 命名ルール
 
 本プロジェクトでは、以下の命名ルールとします：
 
@@ -100,6 +91,12 @@ yahoo_auction_scraper/
 - クラス名：キャメルケース（例：SeleniumController）
 - 関数名：スネークケース（例：get_element_by_xpath）
 - クラス名はメンターが指定します。自己定義は禁止。
+
+
+## コーディング規約（一部）
+
+- `pandas` は `import pandas as pd` を使用
+- `gspread` は基本的に `import gspread` のままでOK（as指定なし）
 
 
 ## GitHub運用フロー
