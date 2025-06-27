@@ -99,6 +99,14 @@ yahoo_auction_scraper/
 - `gspread` は基本的に `import gspread` のままでOK（as指定なし）
 
 
+
+### selenium によるセレクタ優先順位
+1.	id  → 最もユニークかつ高速。基本的には第一優先。
+2.	name, tag_name → id が無い場合に検討。シンプルな構造で有効。
+3.	css selector → 構造に依存するが、柔軟性あり。安定すれば可読性も良い。
+4.	xpath → 柔軟だが可読性と保守性に欠けるため、最終手段とする。
+
+
 ## GitHub運用フロー
 - `main`：安定版（常に動くコード）
 - `dev`：開発中の作業ブランチ
