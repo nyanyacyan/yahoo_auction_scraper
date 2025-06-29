@@ -64,13 +64,12 @@ yahoo_auction_scraper/
     └── src/
         ├── main.py                # 実行起点（YahooFlowを呼び出し）
         └── flow/
-            ├── yahoo_flow.py         # 一連の処理フロー
+            ├── main_flow.py          # 一連の処理フロー
             ├── detail_page_flow.py   # 詳細ページの処理フロー
             ├── repeater.py           # ※繰り返し処理用（今回は未使用かも）
             └── base/
                 ├── chrome.py              # Chrome（クラス名：Chrome）
                 ├── selenium.py            # Selenium（クラス名：Selenium）
-                ├── image_downloader.py    # 画像取得（クラス名：ImageDownloader）
                 ├── spreadsheet_read.py    # スプシ読取（クラス名：SpreadsheetReader）
                 ├── spreadsheet_write.py   # スプシ書込（クラス名：SpreadsheetWriter）
                 ├── number_calculator.py   # 数値計算（クラス名：PriceCalculator）
