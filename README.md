@@ -59,14 +59,14 @@ yahoo_auction_scraper/
     ├── config/
     │   └── credentials.json       # Google Sheets APIキー（Git除外）
     ├── data/
-    │   ├── images/                # 商品画像の保存先
+    │   ├── input/                 # 商品画像の保存先
     │   └── output/                # 出力CSV等（必要に応じて）
+    │       └── logs/              # logファイル（日付順で作成）
     └── src/
         ├── main.py                # 実行起点（YahooFlowを呼び出し）
         └── flow/
             ├── main_flow.py          # 一連の処理フロー
             ├── detail_page_flow.py   # 詳細ページの処理フロー
-            ├── repeater.py           # ※繰り返し処理用（今回は未使用かも）
             └── base/
                 ├── chrome.py              # Chrome（クラス名：Chrome）
                 ├── selenium.py            # Selenium（クラス名：Selenium）
@@ -167,8 +167,19 @@ yahoo_auction_scraper/
 Pythonファイルは `src/main.py` を起点に実行します。
 
 
+## 🔧 必要ライブラリのインストール
 
-### `.gitignore` の内容
+このプロジェクトでは、用途に応じて2種類の `requirements.txt` を使用しています。
+
+### ① プロジェクト全体用（ルートディレクトリ）
+パッケージ管理・コードチェック・補助ツールなど、全体で共通して使用するパッケージを管理しています。
+
+```bash
+# ルートディレクトリで実行
+pip install -r requirements.txt
+```
+
+## `.gitignore` の内容
 ```markdown
 # Python
 __pycache__/
