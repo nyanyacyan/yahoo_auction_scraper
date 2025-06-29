@@ -42,6 +42,7 @@ Yahoo!オークションから商品データを収集するスクレイピン�
 
 
 ## ディレクトリ構成
+```
 yahoo_auction_scraper/
 ├── README.md                      # プロジェクト概要・ルール・処理フローなど
 ├── .gitignore                     # 不要ファイルのGit管理除外設定
@@ -63,18 +64,23 @@ yahoo_auction_scraper/
     └── src/
         ├── main.py                # 実行起点（YahooFlowを呼び出し）
         └── flow/
+<<<<<<< HEAD
             ├── main_flow.py          # 一連の処理フロー
             ├── detail_page_flow.py   # 一連の処理フロー
+=======
+            ├── yahoo_flow.py         # 一連の処理フロー
+            ├── detail_page_flow.py   # 詳細ページの処理フロー
+>>>>>>> ecc18ef843fb183ab8f8305b32c5260be70c633b
             ├── repeater.py           # ※繰り返し処理用（今回は未使用かも）
             └── base/
                 ├── chrome.py              # Chrome（クラス名：Chrome）
                 ├── selenium.py            # Selenium（クラス名：Selenium）
                 ├── spreadsheet_read.py    # スプシ読取（クラス名：SpreadsheetReader）
                 ├── spreadsheet_write.py   # スプシ書込（クラス名：SpreadsheetWriter）
-                └── number_calculator.py   # 数値計算（クラス名：PriceCalculator）
-                └── url_builder.py         # URL作成（クラス名：UrlBuilder）
+                ├── number_calculator.py   # 数値計算（クラス名：PriceCalculator）
+                ├── url_builder.py         # URL作成（クラス名：UrlBuilder）
                 └── utils.py               # 汎用関数（クラス名なし or Utils）
-
+```
 
 ## クラス構成（flow/base）
 <!-- TODO 後でまとめる -->
