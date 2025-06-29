@@ -52,7 +52,7 @@ yahoo_auction_scraper/
 │   ├── design.md                  # 設計概要と命名ルール
 │   └── flow_spec.md               # 処理フローの詳細定義
 ├── tests/                         # 単体テスト（教育用、納品時は除外）
-│   └── test.py.                   # テストファイル
+│   └── test.py                    # テストファイル
 └── installer/                     # 納品対象一式（以下のみを相手に渡す）
     ├── run.bat                    # Windows用実行スクリプト
     ├── requirements.txt           # 必要ライブラリ一覧（納品用）

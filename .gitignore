@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+
+# Config (機密情報)
+installer/config/credentials.json
+
+# データ出力
+installer/data
+
+# バッチファイル
+*.bat
