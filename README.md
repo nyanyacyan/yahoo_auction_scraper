@@ -64,13 +64,8 @@ yahoo_auction_scraper/
     └── src/
         ├── main.py                # 実行起点（YahooFlowを呼び出し）
         └── flow/
-<<<<<<< HEAD
             ├── main_flow.py          # 一連の処理フロー
-            ├── detail_page_flow.py   # 一連の処理フロー
-=======
-            ├── yahoo_flow.py         # 一連の処理フロー
             ├── detail_page_flow.py   # 詳細ページの処理フロー
->>>>>>> ecc18ef843fb183ab8f8305b32c5260be70c633b
             ├── repeater.py           # ※繰り返し処理用（今回は未使用かも）
             └── base/
                 ├── chrome.py              # Chrome（クラス名：Chrome）
