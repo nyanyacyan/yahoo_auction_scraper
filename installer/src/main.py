@@ -1,6 +1,14 @@
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 # import
+import sys
+import os
 
+# パス対策（絶対パスを追加。これはinstaller/src/main.pyにいる場合！）
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+#from installer.src.flow.base.chrome import Chrome
+
+# 相対パスimport
+from .flow.base.chrome import Chrome
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 
@@ -10,14 +18,15 @@
 # **********************************************************************************
 
 def main():
-    pass  #! ここを修正して実装してください
-
+    driver = Chrome.get_driver()
+    driver.get("https://www.google.com")
+    input("Chromeが起動してGoogleが開いたら何かキーを押してください: ")
+    driver.quit()
 
 # **********************************************************************************
 
 if __name__ == "__main__":
     main()
-
 
 # ----------------------------------------------------------------------------------
 
