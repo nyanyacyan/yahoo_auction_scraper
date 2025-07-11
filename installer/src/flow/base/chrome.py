@@ -4,9 +4,8 @@ import logging
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import WebDriverException
-# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-
 logger = logging.getLogger(__name__)
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 # **********************************************************************************
 # class定義
@@ -34,14 +33,12 @@ class Chrome:
             logger.error(f"予期しないエラー: {e}")
             raise
     # ------------------------------------------------------------------------------
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     driver = Chrome.get_driver()
     driver.get("https://www.google.com")
     input("Chromeが起動したら何かキーを押してください: ")
     driver.quit()
-
 # **********************************************************************************
 
 
