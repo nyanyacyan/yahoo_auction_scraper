@@ -22,7 +22,7 @@ class Chrome:
             options = Options()
             options.add_argument("--window-size=1200,800")
             # 必要なら他のオプションも追加可能
-
+            options.add_argument("--headless=new")
             driver = webdriver.Chrome(options=options)  # Selenium Manager利用
             logger.info("ChromeDriverを起動しました。")
             return driver
