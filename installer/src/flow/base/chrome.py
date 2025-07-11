@@ -22,6 +22,7 @@ class Chrome:
             options = Options()
             options.add_argument("--window-size=1200,800")
             # 必要なら他のオプションも追加可能
+            options.add_argument("--headless=new")
 
             driver = webdriver.Chrome(options=options)  # Selenium Manager利用
             logger.info("ChromeDriverを起動しました。")
@@ -37,7 +38,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     driver = Chrome.get_driver()
     driver.get("https://www.google.com")
-    input("Chromeが起動したら何かキーを押してください: ")
+    # input("Chromeが起動したら何かキーを押してください: ")
     driver.quit()
 # **********************************************************************************
 

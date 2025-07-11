@@ -25,7 +25,8 @@ def main():
     driver = Chrome.get_driver()
     driver.get("https://www.google.com")
     logger.info("ChromeがGoogleを開きました。")
-    input("Chromeが起動してGoogleが開いたら何かキーを押してください: ")
+    # ↓↓↓ ここでユーザー入力待ちは削除！！
+    # input("Chromeが起動してGoogleが開いたら何かキーを押してください: ")
     driver.quit()
     logger.info("Chromeドライバーを終了しました。")
 
