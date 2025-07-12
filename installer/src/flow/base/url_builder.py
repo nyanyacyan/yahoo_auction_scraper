@@ -21,6 +21,7 @@ class UrlBuilder:
     # ------------------------------------------------------------------------------
     # 関数定義
     def __init__(self):
+        pass
         logger.info("UrlBuilderインスタンスを初期化しました。")
 
     # ------------------------------------------------------------------------------
@@ -36,15 +37,16 @@ class UrlBuilder:
             Exception: URL生成失敗時にエラー内容をそのまま上位へ投げる
         """
         try:
-            logger.info(f"URL生成開始：keyword = {keyword}")
+            logger.info(f"URL生成開始：キーワード = {keyword}")
             if not isinstance(keyword, str):
                 raise TypeError(f"キーワードは文字列である必要があります（受信: {type(keyword)}）")
             
             encoded_kw = quote(keyword)
-            logger.debug(f"キーワードをURLエンコード済み：{encoded_kw}")
+            logger.debug(f"キーワードをURLエンコード済み：\n{encoded_kw}")
 
             url = self.URL_TEMPLATE.format(kw=encoded_kw)
-            logger.info(f"URL生成完了：{url}")
+            # logger.info(f"URL生成完了：{url}")
+            # logger.info("URL生成完了")
             return url
         
         except Exception as e:
@@ -88,36 +90,28 @@ class UrlBuilder:
             logger.error(f"DataFrameからのURL一括生成に失敗: {e}")
             raise
 
-    # ------------------------------------------------------------------------------
-    # 関数定義
-    def build_urls_from_list(self, keywords: List[str]) -> List[str]:
-        """
-        キーワードリストから一括でURLを生成する（DataFrameを使わない場合）。
-        Args:
-            keywords (List[str]): 検索ワードのリスト
-        Returns:
-            List[str]: URLリスト
-        Raises:
-            Exception: エラー時
-        """
-        try:
-            logger.info(f"キーワードリストから一括でURL生成処理を開始: 件数={len(keywords)}")
-            urls = [self.build_url(kw) for kw in keywords]
-            logger.info(f"全URL生成完了: 件数={len(urls)}")
-            return urls
-        except Exception as e:
-            logger.error(f"リストからのURL一括生成に失敗: {e}")
-            raise
 
-# ------------------------------------------------------------------------------
-# 直接実行する場合にしようする。単体チェック用として実装
-# 実際のmain.pyでの呼び出し例は、loggerセットアップ済みの前提で下記のように使えます。
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)  # サンプル実行用（本番はアプリ全体で一元管理）
 
-    builder = UrlBuilder()
-    test_keywords = ["ノートパソコン", "iPhone", "ギター"]
-    urls = builder.build_urls_from_list(test_keywords)
-    for url in urls:
-        logger.info(f"生成URL: {url}")
-# **********************************************************************************
+
+
+    # # ------------------------------------------------------------------------------
+    # # 関数定義
+    # def build_urls_from_list(self, keywords: List[str]) -> List[str]:
+    #     """
+    #     キーワードリストから一括でURLを生成する（DataFrameを使わない場合）。
+    #     Args:
+    #         keywords (List[str]): 検索ワードのリスト
+    #     Returns:
+    #         List[str]: URLリスト
+    #     Raises:
+    #         Exception: エラー時
+    #     """
+    #     try:
+    #         logger.info(f"キーワードリストからURL生成処理を開始: 件数={len(keywords)}")
+    #         urls = [self.build_url(kw) for kw in keywords]
+    #         logger.info(f"全URL生成完了: 件数={len(urls)}")
+    #         return urls
+    #     except Exception as e:
+    #         logger.error(f"リストからのURL生成に失敗: {e}")
+    #         raise
+    # # ------------------------------------------------------------------------------
