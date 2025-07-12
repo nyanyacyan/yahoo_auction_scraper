@@ -105,8 +105,9 @@ class SpreadsheetReader:
                 logger.warning("スプレッドシートのデータが空です。")
 
             df = pd.DataFrame(records)
-            logger.debug(f"DataFrame情報: shape={df.shape}")
+            logger.debug(f"DataFrame情報:shape={df.shape}")
             return df
+            print()
         except Exception as e:
             logger.error(f"DataFrame取得時にエラー: {e}")
             raise
