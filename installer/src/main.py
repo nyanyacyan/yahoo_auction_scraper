@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from installer.src.flow.base.chrome import Chrome
 from installer.src.flow.base.spreadsheet_read import SpreadsheetReader
 from installer.src.flow.base.url_builder import UrlBuilder
+from installer.src.utils.text_utils import NumExtractor
 import pandas as pd
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +30,16 @@ def main():
     driver.quit()
     logger.info("Chromeドライバーを終了しました。")
     # -----------------------------------------------------------
+
+    # --- 商品タイトルなどから「ct」直前の数値を抽出するテスト ---
+    test_text = "【6/27(金)】天然イエローダイヤモンド ルース 0.461ct LY VS2 鑑別 CGL│A4116mx 【0.4ct】 ダイヤ diamond"
+    try:
+        # NumExtractorで、商品タイトル中の「ct」直前にある数値（float型）を抽出する
+        ct_value = NumExtractor.extract_ct_value(test_text)
+        # 抽出結果の「型」と「値」をログ出力する
+        logger.info(f"型: {type(ct_value)} | 値: {ct_value}")
+    except Exception as e:
+        logger.error(f"NumExtractor抽出失敗: {e}")
 
     SPREADSHEET_ID = "1nRJh0BqQazHe8qgT2YTZbMaZ9osPX835CbM3KkUjkcE"
     SHEET_NAME = "Master"
