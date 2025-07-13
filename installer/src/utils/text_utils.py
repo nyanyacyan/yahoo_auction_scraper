@@ -35,9 +35,12 @@ class NumExtractor:
                 raise ValueError(f"'ct'直前の数値が見つかりません: {text}")
 
             # 最初に見つかった値をfloatに変換して返す
-            ct_value = float(matches[0])
+            ct_value = float(matches[-1])
             return ct_value
 
         except Exception as e:
             logger.error(f"ct数値抽出エラー: {e} | text='{text}'")
             raise
+
+
+
