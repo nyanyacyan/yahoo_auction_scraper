@@ -1,22 +1,252 @@
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$%$$$$$$$$$$$$$$$$$$$
 # import
+import time
+import re
+import logging
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    TimeoutException,
+    WebDriverException,
+)
 
-
+logger = logging.getLogger(__name__)
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-
 
 # **********************************************************************************
 # class定義
-
-
-    # ------------------------------------------------------------------------------
-    # 関数定義
-
+class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    def __init__(self, chrome: WebDriver):
+        """
+        Seleniumユーティリティクラス
+        :param chrome: 事前に生成済みのwebdriver.Chromeインスタンス
+        """
+        self.chrome = chrome
 
+    # ========================
+    # 基底メソッド
+    # ========================
 
     # ------------------------------------------------------------------------------
+    # 関数定義
+    def find_one(self, by, value, timeout=10) -> WebElement:
+        """
+        要素を1つ取得（なければエラーをraise）
+        :param by: 検索方法（By.IDなど）
+        :param value: セレクタ値
+        :param timeout: タイムアウト秒
+        :return: WebElement
+        """
+        try:
+            self.wait_for_page_complete()
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
 
+            element = WebDriverWait(self.chrome, timeout).until(
+                EC.presence_of_element_located((by, value))
+            )
+            if not element:
+                logger.error(f"要素が見つかりません: by={by}, value={value}")
+                raise ValueError(f"要素が見つかりません: by={by}, value={value}")
+            return element
+        except Exception as e:
+            logger.error(f"要素取得失敗: by={by}, value={value}, error={e}")
+            raise
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    def find_many(self, by, value, timeout=10) -> list:
+        """
+        要素を複数取得（1件もなければエラーをraise）
+        :return: List[WebElement]
+        """
+        try:
+            self.wait_for_page_complete()
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            WebDriverWait(self.chrome, timeout).until(
+                EC.presence_of_element_located((by, value))
+            )
+            elements = self.chrome.find_elements(by, value)
+            if not elements:
+                logger.error(f"要素リストが空: by={by}, value={value}")
+                raise ValueError(f"要素リストが空: by={by}, value={value}")
+            return elements
+        except Exception as e:
+            logger.error(f"複数要素取得失敗: by={by}, value={value}, error={e}")
+            raise
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    def click(self, by, value, timeout=10):
+        """
+        指定要素をクリック
+        """
+        try:
+            element = self.find_one(by, value, timeout)
+            element.click()
+            logger.debug(f"クリック成功: by={by}, value={value}")
+        except Exception as e:
+            logger.error(f"クリック失敗: by={by}, value={value}, error={e}")
+            raise
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    def wait_for_page_complete(self, timeout=10):
+        """
+        ページロードがcompleteになるまで待つ
+        """
+        try:
+            from selenium.webdriver.support.ui import WebDriverWait
+
+            WebDriverWait(self.chrome, timeout).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+            logger.debug("ページロード完了")
+        except TimeoutException:
+            logger.error("ページのロードがタイムアウトしました")
+            raise
+        except Exception as e:
+            logger.error(f"wait_for_page_complete失敗: error={e}")
+            raise
+
+    # ========================
+    # 利用メソッド（各画面）
+    # ========================
+
+    # ---- 一覧画面 ----
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    def get_auction_end_dates(self) -> list:
+        """
+        商品一覧画面から各商品の終了日を抽出（例: ["7/14 23:55", ...]）
+        :return: List[str]
+        """
+        try:
+            from selenium.webdriver.common.by import By
+
+            # 終了日は class="Product__closed"（例：2024/07/15現在）
+            elements = self.find_many(By.CSS_SELECTOR, ".Product__time")
+            end_dates = [el.text.strip() for el in elements if el.text.strip()]
+            if not end_dates:
+                logger.error("終了日が取得できませんでした")
+                raise ValueError("終了日が取得できませんでした")
+            logger.debug(f"終了日リスト: {end_dates}")
+            return end_dates
+        except Exception as e:
+            logger.error(f"get_auction_end_dates失敗: {e}")
+            raise
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    def get_auction_urls(self) -> list:
+        """
+        商品一覧画面から詳細ページURLを抽出
+        :return: List[str]
+        """
+        try:
+            from selenium.webdriver.common.by import By
+
+            # 商品リンクは aタグ（class="Product__titleLink" 例：2024/07/15現在）
+            elements = self.find_many(By.CSS_SELECTOR, "a.Product__titleLink")
+            urls = [el.get_attribute("href") for el in elements if el.get_attribute("href")]
+            if not urls:
+                logger.error("商品URLが取得できませんでした")
+                raise ValueError("商品URLが取得できませんでした")
+            logger.debug(f"商品URLリスト: {urls}")
+            return urls
+        except Exception as e:
+            logger.error(f"get_auction_urls失敗: {e}")
+            raise
+
+    # ---- 詳細画面 ----
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    def get_title(self) -> str:
+        """
+        詳細画面から商品タイトル取得
+        """
+        try:
+            from selenium.webdriver.common.by import By
+
+            # タイトル例：<h1 class="ProductTitle__text">
+            el = self.find_one(By.CSS_SELECTOR, "h1.gv-u-fontSize16--_aSkEz8L_OSLLKFaubKB")
+            title = el.text.strip()
+            if not title:
+                logger.error("タイトルが取得できませんでした")
+                raise ValueError("タイトルが取得できませんでした")
+            logger.debug(f"タイトル取得: {title}")
+            return title
+        except Exception as e:
+            logger.error(f"get_title失敗: {e}")
+            raise
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    def get_price(self) -> int:
+        """
+        詳細画面から商品価格取得
+        """
+        try:
+            from selenium.webdriver.common.by import By
+
+            # ★最新classで修正
+            el = self.find_one(By.CSS_SELECTOR, "span.sc-1f0603b0-2.kxUAXU")
+            price_text = el.text.strip().replace(",", "").replace("円", "")
+            if not price_text:
+                logger.error("価格が取得できませんでした")
+                raise ValueError("価格が取得できませんでした")
+            price = int(price_text)
+            logger.debug(f"価格取得: {price}")
+            return price
+        except Exception as e:
+            logger.error(f"get_price失敗: {e}")
+            raise
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    def get_image_url(self) -> str:
+        """
+        詳細画面から商品画像のURLを取得
+        """
+        try:
+            from selenium.webdriver.common.by import By
+
+            # 最新classで修正
+            el = self.find_one(By.CSS_SELECTOR, "img.sc-7f8d3a42-4.gOFKtZ")
+            image_url = el.get_attribute("src")
+            if not image_url:
+                logger.error("画像URLが取得できませんでした")
+                raise ValueError("画像URLが取得できませんでした")
+            logger.debug(f"画像URL取得: {image_url}")
+            return image_url
+        except Exception as e:
+            logger.error(f"get_image_url失敗: {e}")
+            raise
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    # ======== 任意: 辞書形式でまとめて取得 ========
+    def get_item_info(self) -> dict:
+        """
+        詳細画面から商品情報（タイトル・価格・画像URL）を辞書形式で取得
+        """
+        try:
+            item = {
+                "title": self.get_title(),
+                "price": self.get_price(),
+                "image_url": self.get_image_url(),
+            }
+            logger.debug(f"商品情報取得: {item}")
+            return item
+        except Exception as e:
+            logger.error(f"get_item_info失敗: {e}")
+            raise
 # **********************************************************************************
