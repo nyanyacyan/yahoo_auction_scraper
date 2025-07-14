@@ -14,6 +14,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
+from installer.src.flow.base.number_calculator import PriceCalculator
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 # ------------------------------------------------------------------------------
@@ -40,6 +41,7 @@ def main():
         logger.info(f"型: {type(ct_value)} | 値: {ct_value}")
     except Exception as e:
         logger.error(f"NumExtractor抽出失敗: {e}")
+
 
     SPREADSHEET_ID = "1nRJh0BqQazHe8qgT2YTZbMaZ9osPX835CbM3KkUjkcE"
     SHEET_NAME = "Master"
@@ -110,6 +112,25 @@ def main():
     except Exception as e:
         logger.error(f"URL生成中にエラーが発生しました: {e}")
         raise
+
+
+    # --- PriceCalculatorテスト呼び出し ---
+    logger.info("PriceCalculatorによる1ct単価計算テストを開始します。")
+    try:
+        # テスト用の商品タイトルを定義
+        sample_title = "天然ダイヤ 0.508ct F VS2"
+        # テスト用の落札価格（円）を定義
+        sample_price = 51700
+        # PriceCalculatorクラスの単価計算メソッドを呼び出し
+        # → タイトルと価格から1カラットあたりの単価（円）を計算
+        price_per_ct = PriceCalculator.calculate_price_per_carat(sample_title, sample_price)
+
+        # 計算結果をログに出力
+        logger.info(f"テスト用タイトル: {sample_title} / 落札価格: {sample_price}円 → 1ct単価: {price_per_ct} 円/ct")
+    except Exception as e:
+        # エラー発生時は内容をログ出力
+        logger.error(f"PriceCalculatorテストで例外発生: {e}")
+
 
     logger.info("プログラム終了")
 # ------------------------------------------------------------------------------
