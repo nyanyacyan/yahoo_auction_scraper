@@ -269,4 +269,28 @@ class Selenium:
         except Exception as e:
             logger.error(f"get_item_info失敗: {e}")
             raise
-# **********************************************************************************
+
+    # ------------------------------------------------------------------------------
+    # 関数定義
+    # 商品詳細画面：終了日取得（例: "06/27 22:13"）
+    def get_detail_end_date(self) -> str:
+        """
+        詳細画面から商品の終了日時を取得（例: "7月6日（日）22時8分 終了"）
+        """
+        try:
+            from selenium.webdriver.common.by import By
+            elements = self.chrome.find_elements(
+                By.CSS_SELECTOR,
+                "span.gv-u-fontSize12--s5WnvVgDScOXPWU7Mgqd.gv-u-colorTextGray--OzMlIYwM3n8ZKUl0z2ES"
+            )
+            # 終了日時らしいテキストのみ抽出
+            for el in elements:
+                text = el.text.strip()
+                if "終了" in text or "時" in text:  # ←この判定でフィルタ
+                    logger.debug(f"終了日取得: {text}")
+                    return text
+            logger.error("終了日が取得できませんでした")
+            raise ValueError("終了日が取得できませんでした")
+        except Exception as e:
+            logger.error(f"get_detail_end_date失敗: {e}")
+            raise
