@@ -10,16 +10,18 @@ from selenium.common.exceptions import (
     TimeoutException,
     WebDriverException,
 )
-
+# ロガーのセットアップ（エラーや進捗を出力するため）
 logger = logging.getLogger(__name__)
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 # **********************************************************************************
 # class定義
+# Seleniumによるスクレイピング操作をラップするクラス
 class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # コンストラクタ（chromeインスタンスを受け取る）
     def __init__(self, chrome: WebDriver):
         """
         Seleniumユーティリティクラス
@@ -28,24 +30,27 @@ class Selenium:
         self.chrome = chrome
 
     # ========================
-    # 基底メソッド
+    # 基底メソッド（全画面で共通利用できる操作）
     # ========================
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # ページ内から単一要素を取得
     def find_one(self, by, value, timeout=10) -> WebElement:
         """
         要素を1つ取得（なければエラーをraise）
-        :param by: 検索方法（By.IDなど）
+        :param by: 検索方法（By.ID, By.CSS_SELECTORなど）
         :param value: セレクタ値
         :param timeout: タイムアウト秒
         :return: WebElement
         """
         try:
+            # ページの読み込み完了まで待機
             self.wait_for_page_complete()
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
 
+            # 指定セレクタの要素が現れるまで待つ
             element = WebDriverWait(self.chrome, timeout).until(
                 EC.presence_of_element_located((by, value))
             )
@@ -59,19 +64,24 @@ class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # ページ内から複数要素を取得
     def find_many(self, by, value, timeout=10) -> list:
         """
         要素を複数取得（1件もなければエラーをraise）
         :return: List[WebElement]
         """
         try:
+            # ページの読み込み完了まで待機
             self.wait_for_page_complete()
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
 
+            # 最低1つ要素が出現するまで待つ
             WebDriverWait(self.chrome, timeout).until(
                 EC.presence_of_element_located((by, value))
             )
+
+            # 複数の要素をリストで取得
             elements = self.chrome.find_elements(by, value)
             if not elements:
                 logger.error(f"要素リストが空: by={by}, value={value}")
@@ -83,11 +93,13 @@ class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # 任意の要素をクリック
     def click(self, by, value, timeout=10):
         """
         指定要素をクリック
         """
         try:
+            # 対象要素を取得してクリック
             element = self.find_one(by, value, timeout)
             element.click()
             logger.debug(f"クリック成功: by={by}, value={value}")
@@ -97,6 +109,7 @@ class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # ページのロード（読み込み）が終わるまで待機
     def wait_for_page_complete(self, timeout=10):
         """
         ページロードがcompleteになるまで待つ
@@ -123,6 +136,7 @@ class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # 商品一覧画面：各商品の終了日（落札日）を取得
     def get_auction_end_dates(self) -> list:
         """
         商品一覧画面から各商品の終了日を抽出（例: ["7/14 23:55", ...]）
@@ -131,7 +145,7 @@ class Selenium:
         try:
             from selenium.webdriver.common.by import By
 
-            # 終了日は class="Product__closed"（例：2024/07/15現在）
+            # 終了日を示す要素（クラス名で指定）
             elements = self.find_many(By.CSS_SELECTOR, ".Product__time")
             end_dates = [el.text.strip() for el in elements if el.text.strip()]
             if not end_dates:
@@ -145,6 +159,7 @@ class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # 商品一覧画面：各商品の詳細ページのURLを取得
     def get_auction_urls(self) -> list:
         """
         商品一覧画面から詳細ページURLを抽出
@@ -153,8 +168,9 @@ class Selenium:
         try:
             from selenium.webdriver.common.by import By
 
-            # 商品リンクは aタグ（class="Product__titleLink" 例：2024/07/15現在）
+            # 商品タイトルのリンク要素を全て取得
             elements = self.find_many(By.CSS_SELECTOR, "a.Product__titleLink")
+            # それぞれのhref属性（URL）を抽出
             urls = [el.get_attribute("href") for el in elements if el.get_attribute("href")]
             if not urls:
                 logger.error("商品URLが取得できませんでした")
@@ -169,6 +185,7 @@ class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # 商品詳細画面：タイトル取得
     def get_title(self) -> str:
         """
         詳細画面から商品タイトル取得
@@ -176,7 +193,7 @@ class Selenium:
         try:
             from selenium.webdriver.common.by import By
 
-            # タイトル例：<h1 class="ProductTitle__text">
+            # 商品タイトルのh1要素を取得
             el = self.find_one(By.CSS_SELECTOR, "h1.gv-u-fontSize16--_aSkEz8L_OSLLKFaubKB")
             title = el.text.strip()
             if not title:
@@ -190,6 +207,7 @@ class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # 商品詳細画面：価格取得
     def get_price(self) -> int:
         """
         詳細画面から商品価格取得
@@ -197,7 +215,7 @@ class Selenium:
         try:
             from selenium.webdriver.common.by import By
 
-            # ★最新classで修正
+            # 価格のspan要素を取得
             el = self.find_one(By.CSS_SELECTOR, "span.sc-1f0603b0-2.kxUAXU")
             price_text = el.text.strip().replace(",", "").replace("円", "")
             if not price_text:
@@ -212,6 +230,7 @@ class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # 商品詳細画面：画像URL取得
     def get_image_url(self) -> str:
         """
         詳細画面から商品画像のURLを取得
@@ -219,7 +238,7 @@ class Selenium:
         try:
             from selenium.webdriver.common.by import By
 
-            # 最新classで修正
+            # 商品画像のimg要素を取得
             el = self.find_one(By.CSS_SELECTOR, "img.sc-7f8d3a42-4.gOFKtZ")
             image_url = el.get_attribute("src")
             if not image_url:
@@ -233,6 +252,7 @@ class Selenium:
 
     # ------------------------------------------------------------------------------
     # 関数定義
+    # 商品詳細画面：タイトル・価格・画像URLをまとめて辞書で返す
     # ======== 任意: 辞書形式でまとめて取得 ========
     def get_item_info(self) -> dict:
         """
