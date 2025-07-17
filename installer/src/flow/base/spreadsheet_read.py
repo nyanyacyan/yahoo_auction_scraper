@@ -13,14 +13,8 @@ class SpreadsheetReader:
     Googleスプレッドシートからデータフレーム形式で検索条件情報を取得するクラス
     """
 
-    def __init__(
-        self,
-        spreadsheet_id: str,
-        worksheet_name: str,
-        credentials_path: str = "installer/config/credentials.json"
-    ):
-        logger.debug("SpreadsheetReaderの初期化: spreadsheet_id=%s, worksheet_name=%s, credentials_path=%s",
-                     spreadsheet_id, worksheet_name, credentials_path)
+    def __init__( self, spreadsheet_id: str, worksheet_name: str, credentials_path: str = "installer/config/credentials.json" ):
+        logger.debug("SpreadsheetReaderの初期化: spreadsheet_id=%s, worksheet_name=%s, credentials_path=%s", spreadsheet_id, worksheet_name, credentials_path)
         self.spreadsheet_id = spreadsheet_id
         self.worksheet_name = worksheet_name
         self.credentials_path = credentials_path

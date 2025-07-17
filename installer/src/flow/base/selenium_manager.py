@@ -13,7 +13,6 @@ from selenium.common.exceptions import (
 # ロガーのセットアップ（エラーや進捗を出力するため）
 logger = logging.getLogger(__name__)
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-
 # **********************************************************************************
 # class定義
 # Seleniumによるスクレイピング操作をラップするクラス
@@ -77,9 +76,7 @@ class Selenium:
             from selenium.webdriver.support import expected_conditions as EC
 
             # 最低1つ要素が出現するまで待つ
-            WebDriverWait(self.chrome, timeout).until(
-                EC.presence_of_element_located((by, value))
-            )
+            WebDriverWait(self.chrome, timeout).until( EC.presence_of_element_located((by, value)) )
 
             # 複数の要素をリストで取得
             elements = self.chrome.find_elements(by, value)
