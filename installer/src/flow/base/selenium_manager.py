@@ -1,8 +1,20 @@
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$%$$$$$$$$$$$$$$$$$$$
 # import
+# import time
+# import re
+# import logging
+# from selenium.webdriver.remote.webdriver import WebDriver
+# from selenium.webdriver.remote.webelement import WebElement
+# from selenium.common.exceptions import (
+#     NoSuchElementException,
+#     TimeoutException,
+#     WebDriverException,
+# )
 import time
 import re
 import logging
+import random
+import time
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import (
@@ -10,9 +22,20 @@ from selenium.common.exceptions import (
     TimeoutException,
     WebDriverException,
 )
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
 # ロガーのセットアップ（エラーや進捗を出力するため）
 logger = logging.getLogger(__name__)
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+
+# ------------------------------------------------------------------------------
+# 関数定義
+def random_sleep(min_seconds=0.5, max_seconds=1.5):
+    """人間らしさを出すためのランダムスリープ"""
+    sleep_time = random.uniform(min_seconds, max_seconds)
+    logger.debug(f"ランダムスリープ: {sleep_time:.2f}秒")
+    time.sleep(sleep_time)
 
 # **********************************************************************************
 # class定義
@@ -47,8 +70,8 @@ class Selenium:
         try:
             # ページの読み込み完了まで待機
             self.wait_for_page_complete()
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
+            # from selenium.webdriver.support.ui import WebDriverWait
+            # from selenium.webdriver.support import expected_conditions as EC
 
             # 指定セレクタの要素が現れるまで待つ
             element = WebDriverWait(self.chrome, timeout).until(
@@ -73,8 +96,8 @@ class Selenium:
         try:
             # ページの読み込み完了まで待機
             self.wait_for_page_complete()
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
+            # from selenium.webdriver.support.ui import WebDriverWait
+            # from selenium.webdriver.support import expected_conditions as EC
 
             # 最低1つ要素が出現するまで待つ
             WebDriverWait(self.chrome, timeout).until(
@@ -99,10 +122,12 @@ class Selenium:
         指定要素をクリック
         """
         try:
-            # 対象要素を取得してクリック
             element = self.find_one(by, value, timeout)
             element.click()
             logger.debug(f"クリック成功: by={by}, value={value}")
+
+            # クリック後にランダムスリープ
+            random_sleep()
         except Exception as e:
             logger.error(f"クリック失敗: by={by}, value={value}, error={e}")
             raise
@@ -115,7 +140,6 @@ class Selenium:
         ページロードがcompleteになるまで待つ
         """
         try:
-            from selenium.webdriver.support.ui import WebDriverWait
 
             WebDriverWait(self.chrome, timeout).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
@@ -143,7 +167,6 @@ class Selenium:
         :return: List[str]
         """
         try:
-            from selenium.webdriver.common.by import By
 
             # 終了日を示す要素（クラス名で指定）
             elements = self.find_many(By.CSS_SELECTOR, ".Product__time")
@@ -166,7 +189,6 @@ class Selenium:
         :return: List[str]
         """
         try:
-            from selenium.webdriver.common.by import By
 
             # 商品タイトルのリンク要素を全て取得
             elements = self.find_many(By.CSS_SELECTOR, "a.Product__titleLink")
@@ -191,7 +213,6 @@ class Selenium:
         詳細画面から商品タイトル取得
         """
         try:
-            from selenium.webdriver.common.by import By
 
             # 商品タイトルのh1要素を取得
             el = self.find_one(By.CSS_SELECTOR, "h1.gv-u-fontSize16--_aSkEz8L_OSLLKFaubKB")
@@ -213,7 +234,6 @@ class Selenium:
         詳細画面から商品価格取得
         """
         try:
-            from selenium.webdriver.common.by import By
 
             # 価格のspan要素を取得
             el = self.find_one(By.CSS_SELECTOR, "span.sc-1f0603b0-2.kxUAXU")
@@ -231,24 +251,57 @@ class Selenium:
     # ------------------------------------------------------------------------------
     # 関数定義
     # 商品詳細画面：画像URL取得
+    # def get_image_url(self) -> str:
+    #     """
+    #     詳細画面から商品画像のURLを取得
+    #     """
+    #     try:
+
+    #         # 商品画像のimg要素を取得
+    #         el = self.find_one(By.CSS_SELECTOR, "img.sc-7f8d3a42-4.gOFKtZ")
+    #         image_url = el.get_attribute("src")
+    #         if not image_url:
+    #             logger.error("画像URLが取得できませんでした")
+    #             raise ValueError("画像URLが取得できませんでした")
+    #         logger.debug(f"画像URL取得: {image_url}")
+    #         return image_url
+    #     except Exception as e:
+    #         logger.error(f"get_image_url失敗: {e}")
+    #         raise
+
+
+
+
     def get_image_url(self) -> str:
         """
-        詳細画面から商品画像のURLを取得
+        詳細画面から商品画像のURLを取得（1200x900を優先）
         """
         try:
-            from selenium.webdriver.common.by import By
-
-            # 商品画像のimg要素を取得
+            img_elements = self.chrome.find_elements(By.TAG_NAME, "img")
+            for el in img_elements:
+                src = el.get_attribute("src")
+                logger.debug(f"チェック中の画像URL: {src}")  # ★ログ追加
+                if src and "i-img1200x900" in src:
+                    logger.info(f"✅ 優先画像URL取得(1200x900): {src}")  # ★ログ追加
+                    return src
+            # fallback: 最初のimg（旧方式）
             el = self.find_one(By.CSS_SELECTOR, "img.sc-7f8d3a42-4.gOFKtZ")
-            image_url = el.get_attribute("src")
-            if not image_url:
-                logger.error("画像URLが取得できませんでした")
-                raise ValueError("画像URLが取得できませんでした")
-            logger.debug(f"画像URL取得: {image_url}")
-            return image_url
+            fallback_src = el.get_attribute("src")
+            logger.warning(f"⚠️ fallback画像URL取得: {fallback_src}")
+            return fallback_src
         except Exception as e:
             logger.error(f"get_image_url失敗: {e}")
             raise
+
+
+
+
+
+
+
+
+
+
 
     # ------------------------------------------------------------------------------
     # 関数定義
@@ -278,7 +331,6 @@ class Selenium:
         詳細画面から商品の終了日時を取得（例: "7月6日（日）22時8分 終了"）
         """
         try:
-            from selenium.webdriver.common.by import By
             elements = self.chrome.find_elements(
                 By.CSS_SELECTOR,
                 "span.gv-u-fontSize12--s5WnvVgDScOXPWU7Mgqd.gv-u-colorTextGray--OzMlIYwM3n8ZKUl0z2ES"
