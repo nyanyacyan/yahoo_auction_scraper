@@ -1,82 +1,41 @@
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$%$$$$$$$$$$$$$$$$$$$
 # import
-import logging
-from typing import List, Dict, Any
-import gspread
+import logging  # ログ出力用。エラーや進捗管理、デバッグ等で活用
 
-logger = logging.getLogger(__name__)
-# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+logger = logging.getLogger(__name__)  # このファイル専用のロガーインスタンスを取得
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$%$$$$$$$$$$$$$$$$$$$
 
 # **********************************************************************************
 # class定義
 class SpreadsheetWriter:
     """
-    Yahoo!オークションの商品情報を1行ずつGoogleスプレッドシートへ書き込むクラス
+    Googleスプレッドシートなどのworksheet（gspread等）への
+    行データ書き込みをサポートするユーティリティクラス
     """
+
     # ------------------------------------------------------------------------------
     # 関数定義
-    def __init__(self, worksheet: gspread.Worksheet):
+    def __init__(self, worksheet):
         """
-        :param worksheet: 書き込み先 gspread ワークシートオブジェクト
+        コンストラクタ
+        :param worksheet: 書き込み対象のworksheet（gspreadのWorksheet等を想定）
         """
-        self.worksheet = worksheet
+        self.worksheet = worksheet  # クラス内でworksheet操作するために保存
+
     # ------------------------------------------------------------------------------
     # 関数定義
-    def _find_first_empty_row(self) -> int:
+    def find_first_empty_row(self):
         """
-        A列(日付列)で最初に空のセルが現れる行番号を取得
-        :return: 1始まりの行番号
+        A列（1列目）の最初の空セルの行番号を返す  
+        （1行目はヘッダーとして無視し、2行目以降のみ対象）  
+        もし全て埋まっていれば、その下の行番号を返す
+        :return: 書き込み開始するべき行番号（1始まり）
         """
-        try:
-            dates = self.worksheet.col_values(1)
-            for idx, val in enumerate(dates, 1):  # 1始まり
-                if not val:
-                    return idx
-            return len(dates) + 1  # 末尾に追記
-        except Exception as e:
-            logger.error(f"A列の空セル検索に失敗: {e}")
-            raise
-    # ------------------------------------------------------------------------------
-    # 関数定義
-    def write_record(self, record: Dict[str, Any]):
-        """
-        1レコード分のデータを書き込む
-        :param record: 商品情報（date, title, price, ct, 1ct_price, image）
-        """
-        try:
-            # 画像は =IMAGE("url", 4, 80, 80) に加工
-            image_url = record.get("image", "")
-            if image_url and not image_url.startswith("=IMAGE"):
-                image_cell = f'=IMAGE("{image_url}", 4, 80, 80)'
-            elif image_url:
-                image_cell = image_url  # すでに=IMAGE形式ならそのまま
-            else:
-                image_cell = ""
-
-            # データ整形（列順に注意）
-            row_data = [
-                str(record.get("date", "")),  # A列: 日付
-                record.get("title", ""),      # B列: タイトル
-                record.get("price", ""),      # C列: 価格
-                record.get("ct", ""),         # D列: カラット
-                record.get("1ct_price", ""),  # E列: 1ct単価
-                image_cell,                   # F列: 画像
-            ]
-
-            # 書き込み開始行取得
-            start_row = self._find_first_empty_row()
-            start_cell = f"A{start_row}"
-            logger.info(f"スプレッドシート書き込み行: {start_row}, データ: {row_data}")
-
-            # 1行ぶんだけ2次元リストでupdate
-            # self.worksheet.update(start_cell, [row_data], value_input_option="USER_ENTERED")
-            # ✅ 日付だけ文字列化して左寄せにする
-            row_data[0] = f"'{row_data[0]}"  # 頭にシングルクォート
-
-            # ✅ 書き込みは USER_ENTERED のまま（画像数式も反映させるため）
-            self.worksheet.update(start_cell, [row_data], value_input_option="USER_ENTERED")
-            logger.info(f"スプレッドシート書き込み成功: {row_data}")
-            logger.info(f"スプレッドシート書き込み成功: {row_data}")
-        except Exception as e:
-            logger.error(f"スプレッドシート書き込み失敗: {e}")
-            raise
+        col_values = self.worksheet.col_values(1)  # A列すべてのセル値をリストで取得
+        # 1行目（ヘッダー）は飛ばして、2行目以降で空セルを探す
+        for idx, val in enumerate(col_values[1:], start=2):  # enumerateで行番号と値をセットで取得（start=2で2行目始まり）
+            if not val:  # 空セルを見つけたら
+                return idx  # その行番号を返す
+        # もしA列に空きがなければ、データ末尾の「次の行」（append的に書き込む場合）
+        return len(col_values) + 1  # 既存最終行の次（空行）
+# **********************************************************************************
