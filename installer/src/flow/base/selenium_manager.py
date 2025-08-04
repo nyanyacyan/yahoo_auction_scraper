@@ -323,4 +323,3 @@ class Selenium:
         except Exception as e:
             logger.error(f"get_detail_end_date失敗: {e}")
             raise
-# **********************************************************************************
