@@ -22,6 +22,8 @@ from selenium.webdriver.common.by import By                    # 検索方法の
 # ロガーのセットアップ（エラーや進捗を出力するため。呼び出し元でlevel設定推奨）
 logger = logging.getLogger(__name__)
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+<<<<<<< HEAD
+=======
 
 # ------------------------------------------------------------------------------
 # 関数定義
@@ -36,6 +38,7 @@ def random_sleep(min_seconds=0.5, max_seconds=1.5):
     logger.debug(f"ランダムスリープ: {sleep_time:.2f}秒")  # デバッグ用にスリープ秒をログ出力
     time.sleep(sleep_time)  # 指定秒数スリープ。ボット対策＆サーバー負荷分散
 
+>>>>>>> feature/#10-spreadsheet_writer
 # **********************************************************************************
 # class定義
 # Seleniumによるスクレイピング操作をラップするクラス（全ブラウザ共通の操作を集約）
@@ -95,11 +98,24 @@ class Selenium:
         :return: List[WebElement]
         """
         try:
+<<<<<<< HEAD
+            # ページの読み込み完了まで待機
+            self.wait_for_page_complete()
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            # 最低1つ要素が出現するまで待つ
+            WebDriverWait(self.chrome, timeout).until( EC.presence_of_element_located((by, value)) )
+
+            # 複数の要素をリストで取得
+            elements = self.chrome.find_elements(by, value)
+=======
             self.wait_for_page_complete()  # ページ全体のロード待ち
             WebDriverWait(self.chrome, timeout).until(
                 EC.presence_of_element_located((by, value))
             )
             elements = self.chrome.find_elements(by, value)  # 全一致要素をリスト取得
+>>>>>>> feature/#10-spreadsheet_writer
             if not elements:
                 logger.error(f"要素リストが空: by={by}, value={value}")
                 raise ValueError(f"要素リストが空: by={by}, value={value}")
