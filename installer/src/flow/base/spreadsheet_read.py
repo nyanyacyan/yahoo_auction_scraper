@@ -160,4 +160,3 @@ class SpreadsheetReader:
         spreadsheet = self._client.open_by_key(self.spreadsheet_id)
         worksheet = spreadsheet.worksheet(sheet_name)
         return worksheet
-# **********************************************************************************

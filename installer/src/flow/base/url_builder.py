@@ -108,4 +108,3 @@ class UrlBuilder:
         except Exception as e:
             logger.error(f"DataFrameからのURL一括生成に失敗: {e}")
             raise
-# **********************************************************************************
