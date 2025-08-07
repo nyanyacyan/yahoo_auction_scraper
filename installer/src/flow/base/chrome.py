@@ -24,7 +24,7 @@ class Chrome:
             options.add_argument("--window-size=1200,800")  # ウィンドウサイズ（幅, 高さ）を固定。UI崩れ・要素位置ズレ防止
 
             # 必要なら他のオプションも追加可能（例：User-Agent偽装、プロキシ設定など拡張性あり）
-            options.add_argument("--headless=new")  # ヘッドレスモード（画面描画せず処理を高速化＆サーバー上でも実行可能）
+            # options.add_argument("--headless=new")  # ヘッドレスモード（画面描画せず処理を高速化＆サーバー上でも実行可能）
 
             driver = webdriver.Chrome(options=options)  # Selenium 4.6以降はSelenium Managerで自動的にドライバ管理
             logger.info("ChromeDriverを起動しました。")  # 正常起動時はログ出力
