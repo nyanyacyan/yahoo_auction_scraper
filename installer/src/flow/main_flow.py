@@ -20,7 +20,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+
 logger = logging.getLogger(__name__)
+
+
 
 def random_sleep(min_seconds=0.5, max_seconds=1.5):
     sleep_time = random.uniform(min_seconds, max_seconds)

@@ -87,7 +87,7 @@ class PriceCalculator:
                     f"計算結果が不正: title={title}, price={price}, carat={carat}, result={price_per_carat}"
                 )
                 raise ValueError("算出単価が不正です")
-            
+
             # 正常時は計算結果（1ct単価）を返す
             return price_per_carat
         except Exception as e:

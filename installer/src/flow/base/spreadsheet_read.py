@@ -159,8 +159,10 @@ class SpreadsheetReader:
         if self._client is None:
             self._authorize()
 
+
         spreadsheet = self._client.open_by_key(self.spreadsheet_id)
         print(f"sheet_name: '{sheet_name}'")
         print(f"worksheets: {[ws.title for ws in spreadsheet.worksheets()]}")
         worksheet = spreadsheet.worksheet(sheet_name)
+
         return worksheet
