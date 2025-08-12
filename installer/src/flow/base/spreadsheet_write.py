@@ -1,45 +1,40 @@
-import logging  # ログ出力用
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$%$$$$$$$$$$$$$$$$$$$
+# import
+import logging  # ログ出力用。エラーや進捗管理、デバッグ等で活用
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)  # このファイル専用のロガーインスタンスを取得
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$%$$$$$$$$$$$$$$$$$$$
 
+# **********************************************************************************
+# class定義
 class SpreadsheetWriter:
     """
     Googleスプレッドシートなどのworksheet（gspread等）への
     行データ書き込みをサポートするユーティリティクラス
     """
 
+    # ------------------------------------------------------------------------------
+    # 関数定義
     def __init__(self, worksheet):
         """
+        コンストラクタ
         :param worksheet: 書き込み対象のworksheet（gspreadのWorksheet等を想定）
         """
-        self.worksheet = worksheet
+        self.worksheet = worksheet  # クラス内でworksheet操作するために保存
 
+    # ------------------------------------------------------------------------------
+    # 関数定義
     def find_first_empty_row(self):
         """
         A列（1列目）の最初の空セルの行番号を返す  
-        1行目（ヘッダー）は飛ばして、2行目以降のみ対象
+        （1行目はヘッダーとして無視し、2行目以降のみ対象）  
         もし全て埋まっていれば、その下の行番号を返す
         :return: 書き込み開始するべき行番号（1始まり）
         """
-        col_values = self.worksheet.col_values(1)
-        for idx, val in enumerate(col_values[1:], start=2):
-            if not val:
-                return idx
-        return len(col_values) + 1
-
-    def append_rows(self, list_of_lists):
-        """
-        複数行（list of lists）をシート末尾にまとめて追記する
-        :param list_of_lists: [[行1], [行2], ...]
-        """
-        try:
-            # gspread worksheetのappend_rowsを呼び出す（新しいgspreadでサポート）
-            result = self.worksheet.append_rows(list_of_lists, value_input_option='USER_ENTERED')
-            logger.info(f"{len(list_of_lists)}行を追記しました")
-            return result
-        except AttributeError:
-            # append_rowsが無い場合はappend_rowをループで対応
-            for row in list_of_lists:
-                self.worksheet.append_row(row, value_input_option='USER_ENTERED')
-            logger.info(f"{len(list_of_lists)}行をループで追記しました（append_row）")
-            return None
+        col_values = self.worksheet.col_values(1)  # A列すべてのセル値をリストで取得
+        # 1行目（ヘッダー）は飛ばして、2行目以降で空セルを探す
+        for idx, val in enumerate(col_values[1:], start=2):  # enumerateで行番号と値をセットで取得（start=2で2行目始まり）
+            if not val:  # 空セルを見つけたら
+                return idx  # その行番号を返す
+        # もしA列に空きがなければ、データ末尾の「次の行」（append的に書き込む場合）
+        return len(col_values) + 1  # 既存最終行の次（空行）

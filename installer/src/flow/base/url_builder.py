@@ -28,36 +28,21 @@ class UrlBuilder:
 
     # ------------------------------------------------------------------------------
     # 関数定義
-    def build_url(self, keyword: str) -> str:
+    # UrlBuilder クラス内のメソッド差し替え
+    def build_url(self, keyword: str, per_page: int = 100) -> str:
         """
-        1つの検索キーワードから、URLを生成して返す。
-
-        Args:
-            keyword (str): 検索ワード（日本語可）
-
-        Returns:
-            str: 完成した検索用URL
-
-        Raises:
-            Exception: URL生成失敗時にエラー内容をそのまま上位へ投げる
+        検索URLを生成。1ページの件数 n を可変に（デフォルト100）。
+        ヤフオク側の上限があるため、100を指定しても50になる可能性はありますが、
+        ここでは"最大を要求"する方針です。
         """
-        try:
-            logger.info(f"URL生成開始：キーワード = {keyword}")
-            # キーワードがstr型でなければ型エラー
-            if not isinstance(keyword, str):
-                raise TypeError(f"キーワードは文字列である必要があります（受信: {type(keyword)}）")
-            
-            encoded_kw = quote(keyword)  # URLで安全に扱えるようエンコード（例：空白→%20、日本語→%E3%80%82等）
-            logger.debug(f"キーワードをURLエンコード済み：\n{encoded_kw}")
+        from urllib.parse import quote_plus
 
-            url = self.URL_TEMPLATE.format(kw=encoded_kw)  # テンプレート文字列に埋め込む
-            # logger.info(f"URL生成完了：{url}")
-            # logger.info("URL生成完了")
-            return url  # 正常時は完成した検索URLを返す
-        
-        except Exception as e:
-            logger.error(f"URL生成に失敗しました（keyword: {keyword}）: {e}")
-            raise  # 上位へ例外伝播
+        q = quote_plus(keyword)
+        # ベースURLは既存仕様に合わせてください
+        base = "https://auctions.yahoo.co.jp/closedsearch/closedsearch"
+        # b=1: 先頭、 n=per_page: 1ページ件数
+        n = int(per_page) if per_page and int(per_page) > 0 else 50
+        return f"{base}?p={q}&va={q}&b=1&n={n}"
 
     # ------------------------------------------------------------------------------
     # 関数定義

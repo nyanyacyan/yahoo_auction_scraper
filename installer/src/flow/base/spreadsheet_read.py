@@ -140,7 +140,7 @@ class SpreadsheetReader:
             df = pd.DataFrame(records)
             logger.debug(f"DataFrame情報:shape={df.shape}")
             return df
-
+            print()  # ※このprint()は実行されません（returnの後なので死文）
         except Exception as e:
             logger.error(f"DataFrame取得時にエラー: {e}")
             raise
@@ -153,16 +153,12 @@ class SpreadsheetReader:
         :param sheet_name: 取得したいシート名
         :return: gspread.Worksheetインスタンス
         """
-        # 型と空白を揃える
-        sheet_name = str(sheet_name).strip()
         logger.info(f"ワークシート[{sheet_name}]を取得します。")
         if self._client is None:
             self._authorize()
 
 
         spreadsheet = self._client.open_by_key(self.spreadsheet_id)
-        print(f"sheet_name: '{sheet_name}'")
-        print(f"worksheets: {[ws.title for ws in spreadsheet.worksheets()]}")
         worksheet = spreadsheet.worksheet(sheet_name)
 
         return worksheet

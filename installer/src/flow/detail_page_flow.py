@@ -1,47 +1,42 @@
-# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$%$$$$$$$$$$$$$$$$$$$
-# import
-import logging  # ロギング用。エラーや進捗の可視化・運用監視に必須
-from installer.src.flow.base.number_calculator import PriceCalculator  # 1カラット単価計算ユーティリティ
-from installer.src.utils.text_utils import NumExtractor                # タイトルからカラット数を抽出するためのユーティリティ
-from installer.src.flow.base.utils import DateConverter               # 終了日時文字列をdate型へ変換するためのユーティリティ
+# 簡潔に、どのような順序で動いているか出力して+1行プチ解説
+# ==========================================================
+# import（標準、プロジェクト内モジュール）
 
-# ロガーのセットアップ（このモジュール用のロガー。上位でlevelなどの設定が必要）
+import logging
+from installer.src.flow.base.number_calculator import PriceCalculator
+from installer.src.utils.text_utils import NumExtractor
+from installer.src.flow.base.utils import DateConverter
+
+
+# ==========================================================
+# ログ設定
+
 logger = logging.getLogger(__name__)
-# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
-# **********************************************************************************
-# class定義
+
+
+# ==========================================================
+# class
+
+
 class DetailPageFlow:
-    """
-    Yahoo!オークション詳細ページの情報をまとめて抽出し、構造化データとして返却するフロークラス
 
-    - Selenium WebDriverと各種抽出ユーティリティを内部に保持
-    - 商品タイトル、価格、画像、カラット数、1ct単価、終了日などを一括で取得可能
-    - スプレッドシート連携など、後段処理のための前処理にも適合
-    """
 
-    # ------------------------------------------------------------------------------
-    # 関数定義
+    # ==========================================================
+    # 関数
     def __init__(self, driver, selenium_util):
-        """
-        コンストラクタ
-        :param driver: Selenium WebDriver インスタンス（ページ遷移等の実体）
-        :param selenium_util: Seleniumのヘルパークラス（ページ要素取得等のラッパー）
-        """
+
         self.driver = driver  # 実際のページ操作を担うWebDriver
         self.selenium_util = selenium_util  # 各種取得メソッドを持つユーティリティ
         self.price_calculator = PriceCalculator()  # 1カラット単価計算インスタンス
         self.num_extractor = NumExtractor()        # カラット数抽出インスタンス
         self.date_converter = DateConverter()      # 日付変換インスタンス
 
-    # ------------------------------------------------------------------------------
-    # 関数定義
+
+    # ==========================================================
+    # 関数
     def extract_detail(self, url: str) -> dict:
-        """
-        指定URLの詳細ページから必要データを抽出し、辞書形式で返却
-        :param url: 詳細ページのURL（例: "https://auctions.yahoo.co.jp/..."）
-        :return: 商品データ辞書（date, title, price, ct, 1ct_price, image）
-        """
+
         logger.info(f"詳細ページにアクセス: {url}")  # 開始ログ
 
         try:
@@ -93,3 +88,27 @@ class DetailPageFlow:
             # 例外発生時は詳細ログ（exc_infoでtracebackも出力）
             logger.error(f"詳細ページデータ抽出中にエラー: {e}", exc_info=True)
             raise  # 例外をそのまま呼び出し元に伝播
+
+
+
+
+
+
+
+# ==============
+# 実行の順序
+# ==============
+# 1. import各種モジュール
+# → 標準（logging）とプロジェクト内の必要クラスを読み込む。
+
+# 2. logger設定
+# → このファイル専用のロガーを用意（出力レベルやフォーマットは上位設定に従う）。
+
+# 3. DetailPageFlow クラス定義
+# → 詳細ページから商品データを抽出する処理のまとまりを持つクラス。
+
+# 4. __init__ 初期化
+# → WebDriverやユーティリティクラスのインスタンスを受け取り、属性として保持。
+
+# 5. extract_detail(url) 呼び出し開始
+# → 指定URLの詳細ページにアクセスし、抽出作業を順に実施。
