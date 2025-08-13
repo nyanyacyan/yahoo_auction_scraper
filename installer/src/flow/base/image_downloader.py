@@ -1,48 +1,68 @@
-# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-# import
-import logging
+# ==========================================================
+# import（標準、プロジェクト内モジュール）
 
-# このモジュール専用のロガーインスタンスを取得
-# ※ 実際の出力先・出力レベルは、呼び出し元（上位）で設定されることを想定
-logger = logging.getLogger(__name__)
-# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+import logging  # ログ出力用。動作確認やエラー原因の記録に使う
 
-# **********************************************************************************
+
+
+# ==========================================================
+# ログ設定
+
+logger = logging.getLogger(__name__)  # このモジュール専用のロガーを取得
+
+
+
+# ==========================================================
 # class定義
-class ImageDownloader:
-    """
-    Yahoo!オークション商品画像URLを
-    GoogleスプレッドシートのIMAGE式（=IMAGE("url", 4, 80, 80)）
-    に変換するだけの純粋な（副作用なし）ユーティリティクラス。
 
-    ※ 画像のダウンロード・リサイズ・保存は一切しません。
-    """
+class ImageDownloader:  # 画像URLからスプレッドシートのIMAGE関数文字列を作るユーティリティクラス
+    # 役割：画像URLを受け取り、セルに貼れる =IMAGE(...) 形式の文字列を返す（外部通信は行わない）
 
-    # ------------------------------------------------------------------------------
+
+
+    # ==========================================================
     # 静的メソッド（インスタンス化不要で利用可能）
-    @staticmethod
-    def get_image_formula(image_url: str) -> str:
-        """
-        画像URLをスプレッドシート貼付用IMAGE式へ変換して返す
 
-        Args:
-            image_url (str): 商品画像のURL
+    @staticmethod  # インスタンスを作らずに呼べることを示すデコレータ
+    def get_image_formula(image_url: str) -> str:  # 画像URLからIMAGE式の文字列を生成して返す
+        # 引数 image_url: 画像のURL（文字列）。これを =IMAGE("...", 4, 80, 80) に埋め込む
+        # 戻り値: スプレッドシートにそのまま貼れる IMAGE 関数の文字列
 
-        Returns:
-            str: Google Sheets用のIMAGE式
-            例 '=IMAGE("画像URL", 4, 80, 80)'
-
-        Raises:
-            ValueError: 不正なURL（空文字/None/strでない）なら例外
-        """
-        # URL未指定または型不一致時はエラーで即返す
-        if not image_url or not isinstance(image_url, str):
-            logger.error("画像URLが不正です: %r", image_url)
-            raise ValueError("画像URLが不正です")
+        if not image_url or not isinstance(image_url, str):  # URLが空 or 文字列以外なら不正と判定
+            # 初学者がつまずきやすいポイント：入力値検証（バリデーション）で早期に弾く
+            logger.error("画像URLが不正です: %r", image_url)  # 不正値をログに残し原因調査を容易にする
+            raise ValueError("画像URLが不正です")  # 呼び出し側が捕捉できるようにValueErrorを送出
         
-        # IMAGE関数フォーマットに変換
-        formula = f'=IMAGE("{image_url}", 4, 80, 80)'
-        
-        # DEBUGログ（通常は出力されない・開発時のみ）
-        logger.debug(f"IMAGE式生成: {formula}")
-        return formula
+        formula = f'=IMAGE("{image_url}", 4, 80, 80)'  # f文字列でIMAGE式を組み立て（4=カスタム、80x80px）
+        # GoogleスプレッドシートのIMAGE関数：第1引数=URL、第2引数=4でカスタムサイズ、第3/4=幅/高さ(px)
+
+        logger.debug(f"IMAGE式生成: {formula}")  # 生成結果をデバッグログに出力（動作確認に有用）
+        return formula  # 完成した式を返す（呼び出し側はセルに書き込むだけで画像表示）
+
+
+
+
+
+# ==============
+# 実行の順序
+# ==============
+# 1. モジュール logging をimportする
+# → ログ出力の機能を読み込む。補足：この時点では処理は実行されない。
+
+# 2. logger = logging.getLogger(name) を実行する
+# → このモジュール専用のロガーを取得する。補足：以降のDEBUG/ERRORがここに記録される。
+
+# 3. class ImageDownloader を定義する
+# → 画像URLからスプレッドシート用の =IMAGE(…) 文字列を作るユーティリティclass。補足：定義は実行ではない。
+
+# 4. 静的メソッド get_image_formula(image_url) を定義する（@staticmethod）
+# → インスタンス化せずに ImageDownloader.get_image_formula(…) の形で呼べる。補足：状態を持たない純粋な変換処理。
+
+# 5. （get_image_formula が呼ばれたとき）引数 image_url を検証する
+# → 文字列で空でないかを確認し、不正ならエラーログを出して ValueError を送出。補足：早期バリデーションで後続エラーを防ぐ。
+
+# 6. （検証OKなら）=IMAGE(”{url}”, 4, 80, 80) の文字列を組み立てる
+# → f文字列でURLを埋め込み、4=カスタムサイズ・80x80pxを指定する。補足：シートに貼るだけで画像が表示される形式。
+
+# 7. 生成結果をDEBUGログに出力し、その文字列を返す
+# → 動作確認やデバッグに役立てつつ、呼び出し側へ完成した式を返却。補足：外部通信は一切行わない。
