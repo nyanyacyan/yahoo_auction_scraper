@@ -23,7 +23,6 @@ from selenium.webdriver.common.by import By  # 要素指定に使う定数
 from selenium.webdriver.support.ui import WebDriverWait  # 明示的待機
 from selenium.webdriver.support import expected_conditions as EC  # 待機条件
 from dataclasses import dataclass  # 軽量データ構造
-from dataclasses import dataclass  # 重複インポートだが無害（既に読み込み済み）
 import time as _time  # 統計などの経過時間計測用に別名でtimeを使用
 
 
@@ -240,6 +239,57 @@ class MainFlow:  # 主要な実行手順を統括するクラス
 
 
 
+
+
+
+
+
+
+
+
+
+
+    # ==========================================================
+    # メソッド定義
+
+    def _resolve_output_sheet_name(self, row_index: int) -> str:
+        """
+        行インデックス(0始まり)に応じて書き込み先WS名を返す。
+        優先順:
+        1) Config.OUTPUT_SHEETS があればそのマップ（例: ["1","2"] / ["WS1","WS2"]）
+        2) Config.DATA_OUTPUT_SHEET が末尾数字を持てば +row_index で連番化（"1"→"2"...／"WS1"→"WS2"...）
+        3) 上記以外は row_index+1 を文字列化（"1","2",...）
+        """
+        mapping = getattr(self.config, "OUTPUT_SHEETS", None)
+        if isinstance(mapping, (list, tuple)) and row_index < len(mapping):
+            return str(mapping[row_index])
+
+        base = str(getattr(self.config, "DATA_OUTPUT_SHEET", "1")).strip()
+
+        # 末尾に数字があれば連番化（例: "1"→"2"…／"WS1"→"WS2"…）
+        import re
+        m = re.match(r'^(.*?)(\d+)$', base)
+        if m:
+            prefix, num = m.groups()
+            return f"{prefix}{int(num) + row_index}"
+
+        # 数値だけなら行番号ベース
+        if base.isdigit():
+            return str(row_index + 1)
+
+        # それ以外は常に base（=固定名）
+        return base
+
+
+
+
+
+
+
+
+
+
+
     # ==========================================================
     # 静的メソッド（インスタンス化不要で利用可能）
 
@@ -444,9 +494,18 @@ class MainFlow:  # 主要な実行手順を統括するクラス
                             dct["date"] = dct["date"].lstrip("'")  # 先頭の'を取り除く
 
                     try:
-                        output_sheet_name = self.config.DATA_OUTPUT_SHEET  # 出力シート名
-                        reader = SpreadsheetReader(self.config.SPREADSHEET_ID, output_sheet_name)  # リーダ作成
-                        worksheet = reader.get_worksheet(output_sheet_name)  # 対象ワークシート取得
+                        # output_sheet_name = self.config.DATA_OUTPUT_SHEET  # 出力シート名
+                        # reader = SpreadsheetReader(self.config.SPREADSHEET_ID, output_sheet_name)  # リーダ作成
+                        # worksheet = reader.get_worksheet(output_sheet_name)  # 対象ワークシート取得
+
+                        # ↓置き換え
+                        output_sheet_name = self._resolve_output_sheet_name(idx)
+                        reader = SpreadsheetReader(self.config.SPREADSHEET_ID, output_sheet_name)
+                        worksheet = reader.get_worksheet(output_sheet_name)
+                        self.logger.debug(f"出力WS: {output_sheet_name}")
+
+
+
                         flow = WriteGssFlow(worksheet)  # 書き込みフロー生成
                         flow.run(details)  # 一括書き込み実行
                         self.logger.info(f"{idx+1}行目: 期間内URLを {len(details)} 件書き込み完了")  # 完了ログ
@@ -671,9 +730,20 @@ class MainFlow:  # 主要な実行手順を統括するクラス
                                 dct["date"] = dct["date"].lstrip("'")  # 先頭のシングルクォートを削る
 
                         try:
-                            output_sheet_name = self.config.DATA_OUTPUT_SHEET  # 出力先シート名
-                            reader = SpreadsheetReader(self.config.SPREADSHEET_ID, output_sheet_name)  # シート読取用
-                            worksheet = reader.get_worksheet(output_sheet_name)  # 対象ワークシートを取得
+                            # output_sheet_name = self.config.DATA_OUTPUT_SHEET  # 出力先シート名
+                            # reader = SpreadsheetReader(self.config.SPREADSHEET_ID, output_sheet_name)  # シート読取用
+                            # worksheet = reader.get_worksheet(output_sheet_name)  # 対象ワークシートを取得
+
+
+                            # ↓置き換え
+                            output_sheet_name = self._resolve_output_sheet_name(idx)
+                            reader = SpreadsheetReader(self.config.SPREADSHEET_ID, output_sheet_name)
+                            worksheet = reader.get_worksheet(output_sheet_name)
+                            self.logger.debug(f"出力WS: {output_sheet_name}")
+
+
+
+
                             flow = WriteGssFlow(worksheet)  # 書き込みフローを用意
                             flow.run(details)  # まとめて書き込み（USER_ENTEREDで式や数値を評価）
                             self.logger.info(f"{idx+1}行目: 期間内URLを {len(details)} 件書き込み完了")  # 書き込み完了をINFOで通知

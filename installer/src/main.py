@@ -1,3 +1,83 @@
+# # ==========================================================
+# # import（標準、プロジェクト内モジュール）
+
+# import sys  # Pythonの実行環境やパス操作に使う標準モジュール
+# import os  # 環境変数の参照/設定やファイルパス操作に使用
+# import logging  # ログ出力（INFO/ERRORなどのメッセージ記録）
+# from pathlib import Path  # パス操作をオブジェクト指向的に扱えるヘルパ
+
+
+# # ----------------------------------------------------------
+# # パッケージ解決用にリポジトリルートを sys.path へ追加
+# # このファイル: installer/src/main.py
+# # 2階層上: <repo_root>（例: /Users/.../yahoo_auction_scraper）
+# sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # リポジトリ直下をimport探索パスの先頭に追加
+# # ----------------------------------------------------------
+
+# from installer.src.flow.main_flow import MainFlow, Config  # noqa: E402  （sys.path 追加後に import）  # 実行フロー本体と設定クラスを読み込む（E402は意図的に無視）
+
+
+
+# # ==========================================================
+# # ログ設定
+
+# logging.basicConfig(level=logging.DEBUG)  # ルートロガーにINFOレベルの基本設定を行う
+
+
+# # ==========================================================
+# # 関数定義
+
+# def app_root() -> Path:  # 実行形態（ソース/バイナリ）に応じて基準ディレクトリを返す関数
+#     if getattr(sys, "frozen", False):  # PyInstaller等で凍結（単一バイナリ）されているか判定
+#         # PyInstaller --onefile 時、exe の場所
+#         return Path(sys.executable).resolve().parent  # 実行ファイルのあるディレクトリを返す
+#     # ソース実行時は installer/ を返す
+#     return Path(__file__).resolve().parents[1]  # このファイルの1つ上（installer/）を返す
+# # 資格情報の自動検出（未設定なら config/credentials.json を使う）
+# CRED_PATH = app_root() / "config" / "credentials.json"  # 既定の資格情報パスを組み立てる
+# if (  # 既に環境変数で資格情報が与えられていない場合のみ、デフォルトパスを設定
+#     "GOOGLE_CREDENTIALS_JSON" not in os.environ
+#     and "GOOGLE_CREDENTIALS_JSON_B64" not in os.environ
+#     and "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ
+#     and CRED_PATH.exists()
+# ):
+#     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(CRED_PATH)  # gspread等が参照する環境変数をセット
+
+
+
+# # ==========================================================
+# # 関数定義
+
+# def main():  # アプリのエントリーポイントとなる関数
+#     config = Config()           # 設定情報の取得（スプレッドシートIDやUAなど）
+#     flow = MainFlow(config)     # 実行フローのインスタンスを生成（依存注入）
+#     flow.run()                  # 全体フローを実行（条件読込→巡回→書き込み）
+
+
+
+# # ==========================================================
+# # 実行エントリーポイント
+
+# if __name__ == "__main__":  # モジュールとしてimportされた場合は実行せず、直接起動時のみmain()を呼ぶ
+#     main()  # メイン関数を起動して処理を開始
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ==========================================================
 # import（標準、プロジェクト内モジュール）
 
@@ -6,6 +86,7 @@ import os  # 環境変数の参照/設定やファイルパス操作に使用
 import logging  # ログ出力（INFO/ERRORなどのメッセージ記録）
 from pathlib import Path  # パス操作をオブジェクト指向的に扱えるヘルパ
 
+
 # ----------------------------------------------------------
 # パッケージ解決用にリポジトリルートを sys.path へ追加
 # このファイル: installer/src/main.py
@@ -13,6 +94,7 @@ from pathlib import Path  # パス操作をオブジェクト指向的に扱え�
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # リポジトリ直下をimport探索パスの先頭に追加
 # ----------------------------------------------------------
 
+from installer.src.utils.log_trimmer import install_log_trimmer
 from installer.src.flow.main_flow import MainFlow, Config  # noqa: E402  （sys.path 追加後に import）  # 実行フロー本体と設定クラスを読み込む（E402は意図的に無視）
 
 
@@ -20,8 +102,8 @@ from installer.src.flow.main_flow import MainFlow, Config  # noqa: E402  （sys.
 # ==========================================================
 # ログ設定
 
-logging.basicConfig(level=logging.INFO)  # ルートロガーにINFOレベルの基本設定を行う
-
+logging.basicConfig(level=logging.DEBUG)  # ルートロガーにINFOレベルの基本設定を行う
+install_log_trimmer()
 
 
 # ==========================================================
@@ -60,6 +142,15 @@ def main():  # アプリのエントリーポイントとなる関数
 
 if __name__ == "__main__":  # モジュールとしてimportされた場合は実行せず、直接起動時のみmain()を呼ぶ
     main()  # メイン関数を起動して処理を開始
+
+
+
+
+
+
+
+
+
 
 
 
