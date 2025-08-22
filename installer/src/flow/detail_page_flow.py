@@ -1,155 +1,148 @@
 # ==========================================================
-# import（標準、プロジェクト内モジュール）
+# import（標準、プロジェクト内モジュール）  # 必要な外部/自作モジュールを読み込む
 
-import logging  # ログ機能を使うための標準ライブラリ
-from installer.src.flow.base.number_calculator import PriceCalculator   # 1ct単価など数値計算ユーティリティ
-from installer.src.utils.text_utils import NumExtractor                # 文字列から数値（ctなど）を取り出す
-from installer.src.flow.base.utils import DateConverter                # さまざまな日付表記を date 型に正規化する
-
+import logging  # ログ出力（デバッグ/情報/警告/エラー）に使用
+from typing import Any, Optional, TypedDict  # 型ヒント用。辞書型の形を厳密に定義できる
+from datetime import datetime, date  # 実行時刻や終了日の表現・整形に使う
+from installer.src.utils.price_calculator import PriceCalculator   # 1ct単価など数値計算ユーティリティ
+from installer.src.utils.text_utils import NumExtractor            # タイトルなどから ct 抽出
+from installer.src.flow.base.utils import DateConverter            # 終了日文字列 → date/文字列 正規化
+from installer.src.const.sheets import DATE_FMT, INPUT_DATE_FMT, TEXT_PREFIX  # 日付書式や文字列固定用接頭辞
+from installer.src.const.templates import IMAGE_FORMULA  # スプレッドシートの画像式テンプレート
+    # 空行: import完了。ここから型定義に切り替える区切り
 
 
 # ==========================================================
-# ログ設定
+# 型定義  # 抽出結果の辞書の形を明確にしてIDE補完/静的解析を効かせる
 
-logger = logging.getLogger(__name__)  # このモジュール専用のロガー（情報/エラーを記録）
+DetailResult = TypedDict(  # 返却する辞書のキーと型を定義（ランタイムでは通常のdict）
+    "DetailResult",  # 型の名前（開発者向けの識別用）
+    {  # 各キーの型定義（スキーマ）
+        "input_date": str,  # 抽出実行時刻（文字列固定のため接頭辞付き）
+        "date": str,        # 終了日（フォーマット済み文字列。接頭辞で文字列固定）
+        "title": str,       # 商品タイトル
+        "price": int,       # 価格（整数）
+        "ct": float,        # カラット数（小数）
+        "1ct_price": int,   # 1カラットあたりの単価（整数：四捨五入後）
+        "image": str,       # スプレッドシート用の =IMAGE(...) 文字列
+        "url": str,         # 対象詳細ページのURL
+    },
+)
+    # 空行: 型定義とログ設定の区切り
 
+
+# ==========================================================
+# ログ設定  # このモジュール専用のロガーを取得（ハンドラやレベルは上位設定を想定）
+
+logger: logging.Logger = logging.getLogger(__name__)  # モジュール名に紐づくロガー
+# 空行: ここからクラス定義セクションに切り替える
 
 
 # ==========================================================
 # class定義
 
-class DetailPageFlow:  # 商品詳細ページの抽出処理をまとめたクラス
+class DetailPageFlow:  # 詳細ページを巡回し、値の抽出/計算/整形を行うフローの本体
     """
-    役割：商品詳細ページにアクセスし、必要な情報（タイトル/価格/画像/ct/1ct単価/終了日）を
-        一つの辞書にまとめて返す“詳細ページ抽出”のフローを提供する。
-    依存：driver（Selenium WebDriver）と selenium_util（要素取得等のユーティリティ）に依存。
-    """  # クラスの説明（docstring）。実行には影響しないが可読性を高める。
-
+    役割:
+        商品詳細ページにアクセスし、タイトル/価格/画像URL/ct/1ct単価/終了日を抽出して dict で返す。
+    依存:
+        driver (Selenium WebDriver), selenium_util（DOM 取得ユーティリティ）
+    """
+        # 空行: docstringはクラスの概要説明。処理には影響しない
 
 
     # ==========================================================
-    # コンストラクタ（インスタンス生成時に実行）
+    # コンストラクタ
 
-    def __init__(self, driver, selenium_util):  # 初期化でWebDriverとユーティリティを受け取る
-        # driver: Selenium の WebDriver。ページ遷移などブラウザ操作に使用
-        # selenium_util: タイトル/価格/画像URL/終了日などを取得する補助ユーティリティ
-        self.driver = driver  # 渡されたWebDriverをインスタンスに保持
-        self.selenium_util = selenium_util  # Selenium操作ユーティリティを保持
-        self.price_calculator = PriceCalculator()  # 1ct単価の算出に使用（クラスの機能を利用）
-        self.num_extractor = NumExtractor()        # タイトルからカラット(ct)値を抽出するためのヘルパ
-        self.date_converter = DateConverter()      # 終了日時の文字列→date に変換するためのヘルパ
-
+    def __init__(  # 必要な依存（ドライバ/ユーティリティ/計算器）を受け取り初期化
+        self,
+        driver: Any,  # SeleniumのWebDriver想定（型はAnyで受ける）
+        selenium_util: Any,  # タイトル/価格/画像/終了日などを取得する補助ユーティリティ
+        *,
+        price_calculator: Optional[PriceCalculator] | None = None,  # 外部から計算器を注入可能（テスト容易化）
+    ) -> None:
+        """
+        Args:
+            driver: Selenium WebDriver
+            selenium_util: タイトル/価格/画像/終了日テキストを取得するユーティリティ
+            price_calculator: 注入可能。未指定ならログレベルINFOの PriceCalculator を生成
+        """
+        self.driver: Any = driver  # インスタンス全体で使うWebDriverを保持
+        self.selenium_util: Any = selenium_util  # 画面から値を抽出するユーティリティを保持
+        # 計算式と中間値を見たい場合は INFO/DEBUG を選ぶ。既定は INFO。  # ログ粒度調整の指針（説明）
+        self.price_calculator: PriceCalculator = price_calculator or PriceCalculator(log_level=logging.INFO)  # DI/既定生成
+        self.num_extractor: NumExtractor = NumExtractor()  # タイトルから数値(ct)を抽出するヘルパー
+        self.date_converter: DateConverter = DateConverter()  # 終了日テキストをdateへ正規化するヘルパー
 
 
     # ==========================================================
     # メソッド定義
 
-    def extract_detail(self, url: str) -> dict:  # 引数のURLにアクセスして情報をまとめる
+    def extract_detail(self, url: str) -> DetailResult:  # 単一商品の詳細情報を辞書形式で返す
         """
-        引数: url（詳細ページURL）
-        戻り値: 抽出結果をまとめた dict（スプレッドシート書き込みを想定した形）
-        例外: 抽出途中で問題があれば例外を送出（呼び出し側でリトライ/スキップ等を判断）
-        """  # メソッドの目的・入出力の説明（実行動作には影響しない）
+        Args:
+            url: 詳細ページURL
+        Returns:
+            dict: {input_date, date, title, price, ct, 1ct_price, image, url}
+        Raises:
+            例外発生時はログを残して再送出（呼び出し側でリトライ・スキップ判断）
+        """
+        logger.debug(f"詳細ページにアクセス: {url}")  # どのURLにアクセスするかデバッグログ
 
-        logger.debug(f"詳細ページにアクセス: {url}")  # どのURLにアクセスするかを情報ログに出す
+        try:  # 例外発生に備えて全体をtryで囲む（失敗時はログして再送出）
+            # ページ遷移  # WebDriverで対象の詳細ページを開く
+            self.driver.get(url)  # 指定URLへ遷移
 
-        try:  # 以降の処理で例外が起きたらログして上位へ再送出する
-            self.driver.get(url)  # 指定URLへ遷移（通信状況により時間がかかることがある）
+            # タイトル  # 画面から商品タイトルを抽出
+            title: str = self.selenium_util.get_title()  # ユーティリティに委譲して取得
+            logger.debug(f"件名取得: {title}")  # 取得結果を記録
 
-            title = self.selenium_util.get_title()  # 詳細ページの件名（h1等）を取得
-            logger.debug(f"件名取得: {title}")  # 取得結果をデバッグログ
+            # 価格  # 画面から価格を抽出
+            price: int = self.selenium_util.get_price()  # 価格テキストを整数化して返す想定
+            logger.debug(f"価格取得: {price}")  # 取得価格をログ
 
-            price = self.selenium_util.get_price()  # 表示価格（整数）を取得
-            logger.debug(f"価格取得: {price}")  # 取得結果をデバッグログ
+            # 画像URL  # 最適な画像URLを抽出（優先/フォールバックを内包）
+            image_url: str = self.selenium_util.get_image_url()  # src/data-src/srcset対応
+            logger.debug(f"画像URL取得: {image_url}")  # 取得URLをログ
 
-            image_url = self.selenium_util.get_image_url()  # 代表画像のURLを取得（優先度ロジック含む想定）
-            logger.debug(f"画像URL取得: {image_url}")  # 取得結果をデバッグログ
+            # タイトルから ct 抽出  # 文字列中の「○.○ct」等から数値を取り出す
+            carat_value = self.num_extractor.extract_ct_value(title)  # 正規表現等でct値を抽出
+            logger.debug(f"カラット数抽出: {carat_value}")  # 抽出値をログ
 
-            ct = self.num_extractor.extract_ct_value(title)  # タイトル文字列から ct 値を抽出（例: "0.5ct" → 0.5）
-            logger.debug(f"カラット数抽出: {ct}")  # 取得結果をデバッグログ
+            # ct バリデーション  # 0以下やNoneは不正として扱う（以降の計算を防ぐ）
+            if carat_value is None or carat_value <= 0:  # 不正なct値の判定
+                raise ValueError(f"ctが不正です（抽出値: {carat_value}, title: {title}）")  # 早期に例外を投げる
 
-            # 1カラット単価 = (価格/ct) に手数料・税率調整等を適用（内部仕様は PriceCalculator に委譲）
-            price_per_ct = self.price_calculator.calculate_price_per_carat(title, price)  # 1ct単価を計算
-            logger.debug(f"1カラット単価計算: {price_per_ct}")  # 計算結果をデバッグログ
+            # 1ct単価（内部で「÷ct → ×0.9 ×0.9 → 四捨五入」）  # 実コスト換算を加味した単価を算出
+            price_per_carat: int = self.price_calculator.calculate_1ct_price(price=price, ct=carat_value)  # ユーティリティで計算
+            logger.debug(f"1カラット単価計算: {price_per_carat}")  # 計算結果をログ
 
-            end_date_str = self.selenium_util.get_detail_end_date()  # 画面上の終了日時テキストを取得
-            date = self.date_converter.convert(end_date_str)         # 文字列→date型に正規化（年省略は当年扱い等）
-            logger.debug(f"終了日取得: {date}")  # 変換後の日付をデバッグログ
+            # 終了日（画面の表記 → 正規化）  # 画面表記（日本語やMM/DD HH:MM）をdateへ正規化
+            end_date_str_raw: str = self.selenium_util.get_detail_end_date()  # 終了日の生テキスト取得
+            end_date_obj: date = self.date_converter.convert(end_date_str_raw)  # 方針に従って年補完/変換
+            logger.debug(f"終了日取得: {end_date_obj}")  # 正規化結果をログ
 
-            # スプレッドシートに貼るための画像式。=IMAGE(url, 4, 80, 80) はカスタムサイズ(80x80)指定
-            image_formula = f'=IMAGE("{image_url}", 4, 80, 80)'  # 画像セルに直接貼れる式を作成
+            # スプレッドシート用の画像式（テンプレから生成）  # =IMAGE("URL",...) を文字列生成
+            image_formula: str = IMAGE_FORMULA.format(url=image_url)  # テンプレの {url} に差し込み
 
-            result = {  # 収集した情報を辞書にまとめる（書き込み先の想定フォーマット）
-                "date": f"'{date}",     # 先頭に ' を付けてシート側の自動日付変換を防ぐ
-                "title": title,         # 商品タイトル
-                "price": price,         # 価格（整数）
-                "ct": ct,               # カラット数（float）
-                "1ct_price": price_per_ct,  # 1ctあたりの単価（整数、四捨五入済み想定）
-                "image": image_formula  # 画像用セル式（貼り付けでサムネ表示）
-            }  # 辞書の構築完了
+            # 実行時刻 / 終了日のフォーマットは const で統一  # 出力フォーマットの一貫性を担保
+            input_date_str: str = datetime.now().strftime(INPUT_DATE_FMT)  # 処理時刻を所定のフォーマットに整形
+            end_date_str_fmt: str = end_date_obj.strftime(DATE_FMT)  # 終了日も所定のフォーマットへ
 
-            logger.debug(f"抽出結果: {result}")  # 最終結果を情報ログに出力
-            return result  # 呼び出し側へ辞書を返す
+            detail_result: DetailResult = {  # 返却用の辞書を組み立て
+                "input_date": f"{TEXT_PREFIX}{input_date_str}",      # 文字列として固定したいので先頭にプレフィックスを付与
+                "date":       f"{TEXT_PREFIX}{end_date_str_fmt}",    # 同上（シートで数値/日付に解釈されないようにする）
+                "title":      title,                                 # 取得したタイトル
+                "price":      price,                                 # 取得した価格（整数）
+                "ct":         float(carat_value),                    # 小数としてのカラット数
+                "1ct_price":  price_per_carat,                       # 算出済み1ct単価
+                "image":      image_formula,                         # =IMAGE(...) 形式の文字列
+                "url":        url,                                   # 対象商品のURL
+            }
 
-        except Exception as e:  # どこかで例外が起きた場合のハンドリング
-            # どこで失敗したかが追跡できるよう、例外情報（スタックトレース）もログに記録
-            logger.error(f"詳細ページデータ抽出中にエラー: {e}", exc_info=True)  # 例外とトレースをログ
-            raise  # 呼び出し側へ再送出（上位でのリトライ・スキップ等の判断に任せる）
+            logger.debug(f"抽出結果: {detail_result}")  # 最終的な返却値をデバッグ出力
+            return detail_result  # 呼び出し元に辞書を返す
 
-
-
-
-
-# ==============
-# 実行の順序
-# ==============
-# 1. モジュール logging と自作ユーティリティ（PriceCalculator / NumExtractor / DateConverter）をimportする
-# → 後続でログ出力と数値・日付の変換に使う準備。補足：ここは“読み込み”のみで処理は動かない。
-
-# 2. logger = logging.getLogger(name) を実行する
-# → このモジュール専用のロガーを取得する。補足：以降の情報/エラーがここに記録される。
-
-# 3. class DetailPageFlow を定義する
-# → 詳細ページから必要項目を集めて辞書にまとめて返すフローの器を用意する。補足：定義時点では実行されない。
-
-# 4. メソッド init(self, driver, selenium_util) を定義する
-# → WebDriverとSeleniumユーティリティを保持し、PriceCalculator/NumExtractor/DateConverterのインスタンスを準備する。補足：依存を外から渡す“依存注入”。
-
-# 5. メソッド extract_detail(self, url: str) を定義する
-# → 指定URLの詳細ページへアクセスして、タイトル/価格/画像/ct/1ct単価/終了日を集めて辞書で返す。補足：失敗時は例外を上位へ伝える。
-
-# 6. （メソッドが呼ばれたとき）logger.debug でアクセス先URLを記録する
-# → どのページを処理中か追跡できるようにする。補足：トラブル時の手掛かり。
-
-# 7. （メソッドが呼ばれたとき）driver.get(url) で詳細ページへ遷移する
-# → ブラウザを目的のURLに開く。補足：通信状況により待ち時間が発生する。
-
-# 8. （メソッドが呼ばれたとき）selenium_util.get_title() で件名を取得し、debugログに出す
-# → 商品タイトルのテキストを得る。補足：取得内容は検証のためログに残す。
-
-# 9. （メソッドが呼ばれたとき）selenium_util.get_price() で価格（整数）を取得し、debugログに出す
-# → 計算に用いる元価格を得る。補足：通貨記号などの整形はユーティリティ側に委譲。
-
-# 10. （メソッドが呼ばれたとき）selenium_util.get_image_url() で代表画像URLを取得し、debugログに出す
-# → スプレッドシート表示用の画像ソースを確保する。補足：候補が複数ある場合の選択はユーティリティ側。
-
-# 11. （メソッドが呼ばれたとき）NumExtractor.extract_ct_value(title) で ct 値を抽出し、debugログに出す
-# → タイトルに含まれる「◯◯ct」の数値を取り出す。補足：複数ある場合は最後の値を採用する実装。
-
-# 12. （メソッドが呼ばれたとき）PriceCalculator.calculate_price_per_carat(title, price) で1ct単価を算出する
-# → 手数料・税率等の調整込みで単価（整数）を得る。補足：内部ロジックはクラスに委譲。
-
-# 13. （メソッドが呼ばれたとき）selenium_util.get_detail_end_date() で終了日時文字列を取得し、DateConverter.convert(…) で date 型へ変換する
-# → 表記ゆれのある日付を正規化する。補足：年省略などはコンバータの規約に従う。
-
-# 14. （メソッドが呼ばれたとき）画像セル用に =IMAGE(“URL”, 4, 80, 80) の式文字列を組み立てる
-# → スプレッドシートでサムネ表示できる形式に整える。補足：4はカスタムサイズ指定（80x80）。
-
-# 15. （メソッドが呼ばれたとき）結果の辞書 result を組み立てる（dateは先頭に’を付与）
-# → シートの自動日付変換を避けつつ、title/price/ct/1ct_price/image を格納する。補足：後工程にそのまま渡せる形。
-
-# 16. （メソッドが呼ばれたとき）logger.debug で最終結果を出力し、result を return する
-# → 取得/計算の最終確認をログに残して呼び出し元へ返す。補足：実処理はここで完了。
-
-# 17. （例外発生時のみ）logger.error(…, exc_info=True) で詳細を記録し、raise で再送出する
-# → 失敗の原因とスタックトレースを残し、上位でのリトライ/スキップ判断に委ねる。補足：例外は握りつぶさない方針。
+        except Exception as e:  # 途中のどこかで例外が発生した場合
+            logger.error(f"詳細ページデータ抽出中にエラー: {e}", exc_info=True)  # 例外情報を含めてエラーログ
+            raise  # ここでは握りつぶさず再送出（上位でリトライ/スキップ判断）

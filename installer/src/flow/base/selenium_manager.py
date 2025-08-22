@@ -1,682 +1,496 @@
 # ==========================================================
-# import（標準、プロジェクト内モジュール）
+# import（標準、プロジェクト内モジュール）  # この下で必要なモジュールを読み込む
 
-import time           # スリープ（待機）でサイト負荷や検出を避けるために使用
-import logging        # 動作ログ・エラーログの出力に使用
-import random         # ランダムな待機時間の生成に使用
-import re             # ここでは未使用（保守の都合で残置かもしれません）
-from selenium.webdriver.remote.webdriver import WebDriver     # ドライバ型ヒント
-from selenium.webdriver.remote.webelement import WebElement    # 要素型ヒント
-from selenium.common.exceptions import (
-    NoSuchElementException,             # 要素未発見時の例外（本ファイルでは直接は未使用）
-    TimeoutException,                   # 待機のタイムアウト時例外
-    WebDriverException,                 # WebDriver全般の例外（本ファイルでは直接は未使用）
-    ElementClickInterceptedException,   # クリックが遮られた場合の例外
-)  # 例外群をタプル定義でまとめてimport
-from selenium.webdriver.support.ui import WebDriverWait        # 明示的待機
-from selenium.webdriver.support import expected_conditions as EC  # 待機条件
-from selenium.webdriver.common.by import By                    # 検索方法（CSS/XPATH など）
-from selenium.webdriver.common.by import By                    # ※重複import（機能は変えないためそのまま）
-from selenium.common.exceptions import TimeoutException        # ※重複import（機能は変えないためそのまま）
-
-
-
-# ==========================================================
-# ログ設定
-
-logger = logging.getLogger(__name__)  # このモジュール専用のロガー
-
+import time  # スリープや時間待機に使用
+import logging  # ログ出力（情報/警告/エラーの記録）に使用
+import random  # ランダム値生成（アクセス間隔のばらつきに利用）
+from typing import Any, Optional, List  # 型ヒント用（可読性と保守性向上）
+from selenium.webdriver.remote.webdriver import WebDriver  # SeleniumのWebDriver型
+from selenium.webdriver.remote.webelement import WebElement  # 取得したHTML要素の型
+from selenium.common.exceptions import (  # Seleniumで発生しうる代表的な例外群
+    NoSuchElementException,  # 要素が見つからない場合に発生
+    TimeoutException,  # 待機処理が規定時間内に完了しない場合に発生
+    WebDriverException,  # WebDriverに関する一般的な例外
+    ElementClickInterceptedException,  # 別要素に遮られてクリックできない場合
+)
+from selenium.webdriver.support.ui import WebDriverWait  # 条件成立まで待つためのユーティリティ
+from selenium.webdriver.support import expected_conditions as EC  # 代表的な待機条件を提供
+from selenium.webdriver.common.by import By  # 検索方法の定数（CSS_SELECTOR, XPATH 等）
+from installer.src.const import timing as C_TIME  # 待機時間やスリープ秒などの定数定義
+from installer.src.const import selectors as C_SEL  # 画面要素のセレクタや関連定数
+    # 空行: import群とログ設定の区切り（読みやすさのため）
 
 
 # ==========================================================
-# 関数定義
+# ログ設定  # このモジュールで使用するロガーを取得
 
-def _log_fallback_image(url: str) -> None:
-    """
-    役割：フォールバック取得した画像URLのサイズ感に応じてログレベルを切り替える。
-    - 大きめ（1200x900級）なら info、小さめの可能性なら warning。
-    """  # このdocstringは関数の目的を要約（実行結果に影響なし）
-    try:
-        is_large = ("i-img1200x900" in url) or ("=w=1200" in url) or ("&w=1200" in url)  # 文字列包含で大サイズの目安を判定
-        if is_large:
-            logger.info(f"fallback画像URL取得(大サイズ確保): {url}")  # 大きめと判断できた場合は情報レベルで記録
-        else:
-            logger.warning(f"fallback画像URL取得(小サイズの可能性): {url}")  # 小さい可能性がある場合は注意喚起
-    except Exception:
-        # URL解析で例外が出てもログは残す（最悪でもURL文字列は出力）
-        logger.info(f"fallback画像URL取得: {url}")  # 失敗時も最低限の情報を保持
-
+logger = logging.getLogger(__name__)  # モジュール名に紐づくロガー（ハンドラ/レベルは上位設定を想定）
+# 空行: ユーティリティ関数群の定義に切り替えるための区切り
 
 
 # ==========================================================
 # 関数定義
 
-def random_sleep(min_seconds: float = 0.5, max_seconds: float = 1.5) -> None:
-    """
-    役割：アクセス間隔をランダム化してサイトへの負荷軽減・Bot検知の回避に寄与。
-    """  # 疑似人的な待機を入れるための小ユーティリティ
-    sleep_time = random.uniform(min_seconds, max_seconds)  # 下限〜上限の間でランダム秒数を生成
-    logger.debug(f"ランダムスリープ: {sleep_time:.2f}秒")  # 実際に何秒待つかをデバッグ出力
-    time.sleep(sleep_time)  # 実際に待機してリクエスト頻度を下げる
-
+def _log_fallback_image(url: str) -> None:  # フォールバック画像URLのサイズ目安に応じてログ出力レベルを変える
+    try:  # ヒント参照時の例外に備える
+        has_large_hint = any(hint in url for hint in C_SEL.LARGE_IMAGE_HINTS)  # 大画像ヒントを含むか判定
+        if has_large_hint:  # 大サイズが期待できる場合
+            logger.info(f"fallback画像URL取得(大サイズ確保): {url}")  # 情報ログとして記録
+        else:  # ヒントが無い＝小サイズの可能性
+            logger.warning(f"fallback画像URL取得(小サイズの可能性): {url}")  # 警告ログとして記録
+    except Exception:  # 何らかの例外があっても致命ではない
+        logger.info(f"fallback画像URL取得: {url}")  # 最低限URLのみ記録
 
 
 # ==========================================================
 # 関数定義
 
-def _is_large_image_url(url: str) -> bool:
+def random_sleep(min_seconds: Optional[float] = None, max_seconds: Optional[float] = None) -> None:  # アクセス間隔をランダム化する
     """
-    役割：URL文字列から大きめ画像（1200x900想定）かをざっくり判定。
-    注意：単純な文字列包含での判定（確実性よりも手軽さを優先）。
-    """  # True/False を返す純粋関数
-    if not url:
-        return False  # Noneや空文字は大サイズのはずがないためFalse
-    return (
-        "i-img1200x900" in url
-        or "=w=1200" in url
-        or "&w=1200" in url
-        or "i-img" in url and ("1200" in url or "900" in url)
-    )  # 代表的な大サイズ表記が含まれるかで判定
+    アクセス間隔をランダム化（範囲は const/timing で変更可能）
+    """
+    if min_seconds is None:  # 下限指定が無ければ既定値を使用
+        min_seconds = C_TIME.RANDOM_SLEEP_MIN_SECONDS  # 乱数下限（定数）
+    if max_seconds is None:  # 上限指定が無ければ既定値を使用
+        max_seconds = C_TIME.RANDOM_SLEEP_MAX_SECONDS  # 乱数上限（定数）
+    sleep_time: float = random.uniform(float(min_seconds), float(max_seconds))  # 指定範囲で実数の乱数を生成
+    logger.debug(f"ランダムスリープ: {sleep_time:.2f}秒")  # 実際に待機する秒数を記録
+    time.sleep(sleep_time)  # スリープしてアクセスを間引く
 
+
+# ==========================================================
+# 関数定義
+
+def _is_large_image_url(url: str) -> bool:  # URLが大きい画像のヒントを含むかの判定
+    if not url:  # Noneや空文字はFalse
+        return False  # 無効URL扱い
+    return any(hint in url for hint in C_SEL.LARGE_IMAGE_HINTS)  # ヒント群のいずれかを含めばTrue
+
+
+# ==========================================================
+# 関数定義
+
+def _locators_to_by_tuple(locator_tuple: tuple[str, str]) -> tuple[str, str]:  # 自前の(種別, セレクタ)をSeleniumの(By, 値)へ変換
+    kind, selector = locator_tuple  # 先頭要素が種別、後続がセレクタ文字列
+    if kind.lower() == "css":  # CSSセレクタ指定の場合
+        return (By.CSS_SELECTOR, selector)  # CSSとして返却
+    if kind.lower() == "xpath":  # XPath指定の場合
+        return (By.XPATH, selector)  # XPathとして返却
+    # デフォルトはCSS扱い  # 不正/未知の種別はCSSとみなす
+    return (By.CSS_SELECTOR, selector)  # フォールバックの戻り値
+    # 空行: クラス定義セクションに切り替えるための区切り
 
 
 # ==========================================================
 # class定義
 
-class Selenium:
+class Selenium:  # Selenium WebDriverをラップして安全な操作を提供するユーティリティ
     """
-    役割：Selenium(WebDriver)操作のユーティリティ集。
-    - ページ待機、要素取得、クリック、各種情報のスクレイピングを提供。
-    - 例外は基本的に握りつぶさずログを出して再送出 or False/空リストを返して呼び出し側で判断。
-    """  # 利用側から共通操作をまとめて呼べるようにする
-
-
-
-    # ==========================================================
-    # コンストラクタ（インスタンス生成時に実行）
-
-    def __init__(self, chrome: WebDriver):
-        self.chrome = chrome  # 実ブラウザ制御のハンドル（以降の操作はこれを通じて行う）
-
+    WebDriver操作ユーティリティ（セレクタや待機時間は const で一元管理）
+    """
+        # 空行: docstringでクラスの役割を説明。以下に初期化と各操作メソッドを定義
 
 
     # ==========================================================
-    # メソッド定義
+    # コンストラクタ
 
-    def wait_for_page_complete(self, timeout: int = 10) -> None:
-        """
-        役割：document.readyState が 'complete' になるまで待機。
-        - タイムアウト時は TimeoutException を送出（上位でのリトライ判断用）。
-        """  # ページロード完了前に要素探索しないためのガード
-        try:
-            WebDriverWait(self.chrome, timeout).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )  # JSでreadyStateを確認し、completeになるまで待つ
-            logger.debug("ページロード完了")  # 正常完了をデバッグログで記録
-        except TimeoutException:
-            logger.error("ページのロードがタイムアウトしました")  # 待機時間内に完了せず
-            raise  # 例外を上位へ送出して処理方針を委ねる
-        except Exception as e:
-            logger.error(f"wait_for_page_complete失敗: error={e}")  # 想定外の例外を記録
-            raise  # 例外の握りつぶしを避ける
+    def __init__(self, chrome: WebDriver) -> None:  # コンストラクタ：使用するWebDriverを受け取り保持
+        self.chrome: WebDriver = chrome  # メインで用いるWebDriverインスタンス
+        # 互換のため任意に driver 属性を使う場面がある  # 旧コード互換のための別名
+        self.driver: WebDriver = chrome  # driverという属性でも同じインスタンスにアクセス可能にする
 
 
     # ==========================================================
     # メソッド定義
 
-    def find_one(self, by, value, timeout: int = 10) -> WebElement:
-        """
-        役割：単一要素の取得（存在が確認できるまで待機）。
-        - 見つからない場合は例外を投げる（呼び出し側でエラーハンドリング）。
-        """  # 失敗時はログ＋例外で原因が追いやすい
-        try:
-            self.wait_for_page_complete()  # ページ読み込み完了を待ってから探索
-            element = WebDriverWait(self.chrome, timeout).until(
-                EC.presence_of_element_located((by, value))
-            )  # 指定ロケータに一致する要素の出現を待つ
-            if not element:
-                # presence_of_element_located が返したのに None は想定外 → 明示エラー
-                raise ValueError(f"要素が見つかりません: by={by}, value={value}")
+    def wait_for_page_complete(self, timeout: Optional[int] = None) -> None:  # DOM読み込み完了(complete)まで待機
+        timeout = int(C_TIME.PAGE_COMPLETE_TIMEOUT if timeout is None else timeout)  # 未指定なら既定値を使用
+        try:  # 例外を捕捉してログに残す
+            WebDriverWait(self.chrome, timeout).until(  # 指定秒数内に条件を満たすまで待つ
+                lambda d: d.execute_script("return document.readyState") == "complete"  # readyStateがcompleteになる条件
+            )
+            logger.debug("ページロード完了")  # 成功時のデバッグログ
+        except TimeoutException:  # 所定時間を超えた場合
+            logger.error("ページのロードがタイムアウトしました")  # エラーログを出力
+            raise  # そのまま上位へ例外を伝える
+        except Exception as e:  # その他の予期せぬ例外
+            logger.error(f"wait_for_page_complete失敗: error={e}")  # 例外内容を記録
+            raise  # 例外を再送出
+
+
+    # ==========================================================
+    # メソッド定義
+
+    def find_one(self, by: str, value: str, timeout: Optional[int] = None) -> WebElement:  # 条件に一致する要素を1つ取得
+        timeout = int(C_TIME.FIND_TIMEOUT if timeout is None else timeout)  # 待機時間の決定
+        try:  # 要素取得の前にページ完了を保証
+            self.wait_for_page_complete()  # ページの読み込み完了を待つ
+            element: Optional[WebElement] = WebDriverWait(self.chrome, timeout).until(  # 要素の存在を待機
+                EC.presence_of_element_located((by, value))  # (by, value)に一致する要素がDOMに存在
+            )
+            if not element:  # 念のためのNoneチェック
+                raise ValueError(f"要素が見つかりません: by={by}, value={value}")  # 明確なエラーにする
             return element  # 見つかった要素を返す
-        except Exception as e:
-            logger.error(f"要素取得失敗: by={by}, value={value}, error={e}")  # ロケータと例外内容を記録
-            raise  # 上位に通知
-
+        except Exception as e:  # 取得に失敗した場合
+            logger.error(f"要素取得失敗: by={by}, value={value}, error={e}")  # 詳細をログ
+            raise  # 例外を上位へ
 
 
     # ==========================================================
     # メソッド定義
 
-    def find_many(self, by, value, timeout: int = 10) -> list[WebElement]:
-        """
-        役割：複数要素の取得（最低1つ出現するまで待機）。
-        - 空リストは異常とみなして例外を投げる。
-        """  # 要素一覧が必要なときに使用
-        try:
-            self.wait_for_page_complete()  # 読み込み完了待機
-            WebDriverWait(self.chrome, timeout).until(
-                EC.presence_of_element_located((by, value))
-            )  # 少なくとも1つ現れるまで待つ
-            elements = self.chrome.find_elements(by, value)  # 条件にマッチする要素を全取得
-            if not elements:
-                raise ValueError(f"要素リストが空: by={by}, value={value}")  # 空は異常として扱う
-            return elements  # 要素リストを返却
-        except Exception as e:
+    def find_many(self, by: str, value: str, timeout: Optional[int] = None) -> List[WebElement]:  # 複数要素の取得
+        timeout = int(C_TIME.MULTI_FIND_TIMEOUT if timeout is None else timeout)  # 複数取得用の待機時間
+        try:  # まずページ完了を待つ
+            self.wait_for_page_complete()  # 読み込み完了を保証
+            WebDriverWait(self.chrome, timeout).until(  # 少なくとも1つ存在する状態まで待機
+                EC.presence_of_element_located((by, value))  # 要素存在条件
+            )
+            elements: List[WebElement] = self.chrome.find_elements(by, value)  # 条件に一致する全要素を取得
+            if not elements:  # 空リストなら異常
+                raise ValueError(f"要素リストが空: by={by}, value={value}")  # 明示的に失敗とする
+            return elements  # 取得した要素リストを返す
+        except Exception as e:  # 例外発生時
             logger.error(f"複数要素取得失敗: by={by}, value={value}, error={e}")  # 詳細ログ
-            raise  # 上位へ再送出
-
+            raise  # 再送出
 
 
     # ==========================================================
     # メソッド定義
 
-    def click(self, by, value, timeout: int = 10) -> None:
-        """
-        役割：要素をクリック。遮蔽などで通常クリックに失敗した場合はJSクリックにフォールバック。
-        """  # クリック安定化のための二段構え
-        try:
-            el = self.find_one(by, value, timeout)  # クリック対象の要素を取得
-            try:
-                el.click()  # 通常のクリックを試みる
-            except ElementClickInterceptedException:
-                # 画面上に隠れている/被っている等でクリック不可 → JSで強制クリック
-                self.chrome.execute_script("arguments[0].click();", el)  # JSでのクリックに切替
+    def click(self, by: str, value: str, timeout: Optional[int] = None) -> None:  # 指定要素をクリック
+        timeout = int(C_TIME.FIND_TIMEOUT if timeout is None else timeout)  # クリック前の探索待機時間
+        try:  # 要素取得とクリックを試みる
+            element = self.find_one(by, value, timeout)  # クリック対象の要素を取得
+            try:  # 通常のクリック
+                element.click()  # 直接クリック
+            except ElementClickInterceptedException:  # 別要素に遮られている場合
+                self.chrome.execute_script("arguments[0].click();", element)  # JSで強制クリックにフォールバック
             logger.debug(f"クリック成功: by={by}, value={value}")  # 成功ログ
-            random_sleep()  # クリック後の待機（遷移や描画を安定させる）
-        except Exception as e:
-            logger.error(f"クリック失敗: by={by}, value={value}, error={e}")  # 失敗内容を記録
-            raise  # 上位でのリカバリに委ねる
-
-
-
-    # ==========================================================
-    # メソッド定義
-
-    def get_auction_end_dates(self) -> list[str]:
-        """
-        役割：一覧ページ等から終了日時のテキストを複数抽出。
-        - 複数のCSSセレクタを順に試し、最初に取れたリストを返す。
-        - 取れなければ空リスト（例外ではなく空で継続方針）。
-        """  # サイトのマークアップ揺れに耐えるため複数候補を用意
-        try:
-            WebDriverWait(self.chrome, 1.5).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )  # 軽い完了待機
-        except Exception:
-            pass  # 完全ロードに失敗しても後続の要素取得でリカバリを試みる
-
-        selectors = [
-            ".Product__time",
-            ".Product__closedTime",
-            "li.Product__item .Product__time"
-        ]  # 探索用の候補セレクタ配列
-
-        for css in selectors:
-            try:
-                els = self.chrome.find_elements(By.CSS_SELECTOR, css)  # 該当要素をまとめて取得
-                texts = [el.text.strip() for el in els if el.text and el.text.strip()]  # 空文字を除外しつつ抽出
-                if texts:
-                    logger.debug(f"終了日リスト({css}): {texts}")  # どのセレクタで取れたかも記録
-                    return texts  # 最初に取れたものを返す
-            except Exception:
-                continue  # セレクタごとにサイレントに次候補へ
-
-        logger.debug("終了日セレクタに一致する要素が見つからず（空配列で継続）")  # 取得できない場合は空配列で返す旨を記録
-        return []  # 空で返し、上位で分岐判断してもらう
-
+            random_sleep()  # 操作間隔をランダム化（検出回避/負荷低減）
+        except Exception as e:  # 失敗時
+            logger.error(f"クリック失敗: by={by}, value={value}, error={e}")  # 詳細ログ
+            raise  # 例外を上位へ
 
 
     # ==========================================================
     # メソッド定義
 
-    def collect_image_src_candidates(self) -> list[str]:
-        """
-        役割：詳細ページで画像<img>の src 候補を優先度順に収集して返す。
-        注意：self.driver を参照しているが、他メソッドは self.chrome を使っている点に要留意。
-            （既存仕様としてそのまま。利用側で driver 属性の設定を忘れないこと）
-        """  # 使用前に self.driver の存在を必ず確認する
-        driver = getattr(self, "driver", None)  # 動的に driver 属性を参照（なければNone）
-        if driver is None:
-            # 利用前に self.driver をセットしていないケース（呼び出し順序の不整合）
-            raise RuntimeError("Seleniumユーティリティに driver が設定されていません。")  # 事前条件違反を通知
+    def get_auction_end_dates(self) -> list[str]:  # 複数の商品終了日を文字列リストで返す
+        try:  # 簡易なロード完了待機
+            WebDriverWait(self.chrome, 1.5).until(  # 最大1.5秒待つ
+                lambda d: d.execute_script("return document.readyState") == "complete"  # DOM完成の確認
+            )
+        except Exception:  # 多少の失敗は無視
+            pass  # 後続のfindで改めて探索する
 
-        xpaths_in_priority = [
-            # 大サイズ優先（1200x900）
-            '//img[contains(@src,"i-img1200x900")]',
-            # サイズ表記が含まれる i-img 系
-            '//img[contains(@src,"i-img") and (contains(@src,"1200") or contains(@src,"900"))]',
-            # CDN(auc-pctr / images.auctions)の一般的なパス
-            '//img[contains(@src,"auc-pctr.c.yimg.jp") or contains(@src,"images.auctions.yahoo.co.jp/image")]',
-            # もう一段広いyimgドメイン
-            '//img[contains(@src,"auctions.c.yimg.jp")]',
-        ]  # マッチの厳しさ順に優先度を設定
+        for kind, sel in C_SEL.AUCTION_END_DATE_SELECTORS:  # 用意された複数セレクタを順に試す
+            by, value = _locators_to_by_tuple((kind, sel))  # 自前表現を(By, 値)に変換
+            try:  # 各セレクタでの探索
+                elements: List[WebElement] = self.chrome.find_elements(by, value)  # 一致する要素一覧を取得
+                texts: list[str] = [element.text.strip() for element in elements if element.text and element.text.strip()]  # 空を除去
+                if texts:  # 1件以上見つかったら
+                    logger.debug(f"終了日リスト({kind}:{sel}): {texts}")  # 取得結果を記録
+                    return texts  # その時点で返す
+            except Exception:  # セレクタ毎の失敗は続行
+                continue  # 次候補へ
 
-        candidates: list[str] = []  # 収集したURLの格納先
-        seen = set()  # 重複排除用
-
-        for xp in xpaths_in_priority:
-            try:
-                el = WebDriverWait(driver, 1).until(
-                    EC.presence_of_element_located((By.XPATH, xp))
-                )  # XPATHに一致するimgが出現するまで短く待機
-                url = el.get_attribute("src") or ""  # src属性を取得（無ければ空文字）
-                if url and url not in seen:
-                    candidates.append(url)  # 新規URLを候補に追加
-                    seen.add(url)  # 以後の重複を避ける
-            except Exception:
-                continue  # 見つからなければ次のXPATH候補へ
-
-        return candidates  # 収集できた候補URL一覧を返却
-
+        logger.debug("終了日セレクタに一致する要素が見つからず（空配列で継続）")  # 最終的に見つからなかった
+        return []  # 空リストを返す
 
 
     # ==========================================================
     # メソッド定義
 
-    def get_auction_urls(self) -> list[str]:
-        """
-        役割：一覧ページから各商品の詳細URLリストを収集。
-        - 複数のセレクタ候補を順に試す。最初に取得できたリストを返す。
-        - 取れなければ空リスト（例外ではなく空で継続）。
-        """  # タイトルリンクなどを対象にhrefを回収
-        try:
-            WebDriverWait(self.chrome, 1.5).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )  # 軽い完了待機
-        except Exception:
-            pass  # 待機失敗時も続行（下で取得を試す）
+    def collect_image_src_candidates(self) -> list[str]:  # 複数のXPATH候補からimg URLを集める
+        driver: Optional[WebDriver] = getattr(self, "driver", None)  # 互換属性driverを優先的に参照
+        if driver is None:  # WebDriver未設定の場合
+            raise RuntimeError("Seleniumユーティリティに driver が設定されていません。")  # 明確な失敗を通知
 
-        selectors = [
-            "a.Product__titleLink",
-            "a.Product__title",
-            "li.Product__item a[href*='auction']"
-        ]  # 代表的なリンク候補のセレクタ群
-
-        for css in selectors:
-            try:
-                els = self.chrome.find_elements(By.CSS_SELECTOR, css)  # まとめて要素取得
-                urls = [el.get_attribute("href") for el in els if el.get_attribute("href")]  # hrefのあるものだけ抽出
-                if urls:
-                    logger.debug(f"商品URLリスト({css}): {len(urls)}件")  # 取得件数を記録
-                    return urls  # 最初に取れたものを返却
-            except Exception:
+        candidates: list[str] = []  # 収集したURLのリスト
+        seen: set[str] = set()  # 重複排除用セット
+        for xpath_expr in C_SEL.IMAGE_CANDIDATE_XPATHS:  # 候補XPATHを順に試す
+            try:  # 候補ごとの例外は握りつぶす
+                element: Optional[WebElement] = WebDriverWait(driver, 1).until(  # 最長1秒で存在を待機
+                    EC.presence_of_element_located((By.XPATH, xpath_expr))  # 要素の存在条件
+                )
+                url: str = (element.get_attribute("src") or "").strip()  # src属性からURLを取得
+                if url and url not in seen:  # 有効かつ未収集なら
+                    candidates.append(url)  # 候補に追加
+                    seen.add(url)  # 既出セットに追加
+            except Exception:  # 見つからない等の失敗
                 continue  # 次の候補へ
 
-        logger.debug("商品URLセレクタに一致する要素が見つからず（空配列で継続）")  # どれでも取れなかった
-        return []  # 空リストで返し上位に判断を委ねる
-
+        return candidates  # 集めたURL一覧を返す
 
 
     # ==========================================================
     # メソッド定義
 
-    def click_next(self, timeout: int = 8) -> bool:
-        """
-        役割：一覧の「次へ」ページャをクリックして次ページへ遷移。
-        - 候補セレクタを複数試す。不可なら False。
-        - クリックは通常→ダメならJSクリックの順で試す。
-        """  # ページング制御のユーティリティ
-        try:
-            self.wait_for_page_complete()  # まずページの安定化を待つ
+    def get_auction_urls(self) -> list[str]:  # 一覧画面から各商品のリンクURLを収集
+        try:  # 簡易ロード完了待機
+            WebDriverWait(self.chrome, 1.5).until(  # 最大1.5秒待機
+                lambda d: d.execute_script("return document.readyState") == "complete"  # DOM完成を確認
+            )
+        except Exception:  # 失敗は致命でない
+            pass  # 後続で取得を試みる
 
-            candidates = [
-                (By.CSS_SELECTOR, "a.Pager__link[data-cl_link='next']"),
-                (By.CSS_SELECTOR, "a[aria-label='次へ']"),
-                (By.CSS_SELECTOR, "a[rel='next']"),
-                (By.XPATH, "//a[contains(@class,'Pager__link') and (@data-cl-params or @href) and (contains(.,'次') or contains(.,'次の'))]"),
-                (By.XPATH, "//a[normalize-space()='次へ' or normalize-space()='次の50件']"),
-            ]  # 「次へ」を表す可能性のあるロケータ一覧
+        for kind, sel in C_SEL.AUCTION_URL_SELECTORS:  # 複数のリンクセレクタを順に試す
+            by, value = _locators_to_by_tuple((kind, sel))  # (By, 値)に変換
+            try:  # セレクタごとの探索
+                elements: List[WebElement] = self.chrome.find_elements(by, value)  # 一致要素を全取得
+                urls: list[str] = []  # 結果格納用リスト
+                for element in elements:  # 各要素からhrefを取り出す
+                    href = element.get_attribute("href")  # リンク先URL
+                    if href:  # 空でなければ
+                        urls.append(href)  # 収集
+                if urls:  # 1件以上取得できたら
+                    logger.debug(f"商品URLリスト({kind}:{sel}): {len(urls)}件")  # 件数をログ
+                    return urls  # 結果を返す
+            except Exception:  # セレクタ失敗
+                continue  # 次の候補へ
 
-            next_el = None  # 見つかったリンク要素の入れ物
-            for by, sel in candidates:
-                try:
-                    next_el = WebDriverWait(self.chrome, timeout).until(
-                        EC.presence_of_element_located((by, sel))
-                    )  # 候補ごとに存在を待機
-                    if next_el:
-                        break  # 最初に見つかった候補で打ち切り
-                except Exception:
-                    continue  # 見つからなければ次の候補
+        logger.debug("商品URLセレクタに一致する要素が見つからず（空配列で継続）")  # いずれも失敗
+        return []  # 空配列を返す
 
-            if not next_el:
-                logger.debug("次ページのリンクが見つかりませんでした")  # ページ末の可能性
-                return False  # ページング終了を示す
 
-            before_url = self.chrome.current_url  # 遷移確認用の現在URL保持
+    # ==========================================================
+    # メソッド定義
 
-            # 要素をビューポート内に持ってくる（ヘッダ固定などで隠れないよう少し上に調整）
-            self.chrome.execute_script(
+    def click_next(self, timeout: Optional[int] = None) -> bool:  # 次ページリンクを探して遷移する
+        timeout = int(C_TIME.NEXT_TIMEOUT if timeout is None else timeout)  # タイムアウト秒の決定
+        try:  # 一連の操作を例外に強く実行
+            self.wait_for_page_complete()  # 現在ページの読み込み完了を待機
+
+            next_element: Optional[WebElement] = None  # 見つかった「次へ」要素の保持用
+            for locator_tuple in C_SEL.NEXT_BUTTON_LOCATORS:  # 複数の候補ロケータを順に試す
+                by, sel = _locators_to_by_tuple(locator_tuple)  # (By, 値)へ変換
+                try:  # 各候補で探索・待機
+                    next_element = WebDriverWait(self.chrome, timeout).until(  # 存在するまで待機
+                        EC.presence_of_element_located((by, sel))  # DOM存在条件
+                    )
+                    if next_element:  # 見つかれば
+                        break  # 以降の候補は不要
+                except Exception:  # 見つからなければ
+                    continue  # 次候補へ
+
+            if not next_element:  # どの候補でも見つからなかった場合
+                logger.debug("次ページのリンクが見つかりませんでした")  # 情報ログ
+                return False  # 遷移不可
+
+            before_url: str = self.chrome.current_url  # 遷移前URLを控えておく（遷移確認用）
+            self.chrome.execute_script(  # 対象要素を画面中央にスクロールして表示
                 "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
-                next_el
-            )  # 画面中央にスクロール
-            time.sleep(0.2)  # わずかに待機して描画を安定させる
-            self.chrome.execute_script("window.scrollBy(0, -60);")  # ヘッダで隠れないよう微調整
-            time.sleep(0.1)  # さらに短い待機
+                next_element
+            )
+            time.sleep(0.2)  # スクロール後の描画安定を少し待つ
+            self.chrome.execute_script("window.scrollBy(0, -60);")  # 固定ヘッダ等で隠れないよう微調整
+            time.sleep(0.1)  # わずかに待機
 
-            try:
-                # 表示・有効状態を確認してからクリック
-                WebDriverWait(self.chrome, timeout).until(
-                    lambda d: next_el.is_displayed() and next_el.is_enabled()
-                )  # ユーザ操作可能状態を待つ
-                next_el.click()  # 通常クリック
-            except Exception as click_err:
-                logger.debug(f"通常クリック不可: {click_err} → JSクリックにフォールバック")  # フォールバック切替を記録
-                self.chrome.execute_script("arguments[0].click();", next_el)  # JSクリック実施
+            try:  # クリック前に可視/有効を待機して通常クリック
+                WebDriverWait(self.chrome, timeout).until(  # クリック可能状態を待つ
+                    lambda d: next_element.is_displayed() and next_element.is_enabled()  # 表示かつ有効
+                )
+                next_element.click()  # 通常クリック
+            except Exception as click_err:  # 通常クリック不可の場合
+                logger.debug(f"通常クリック不可: {click_err} → JSクリックにフォールバック")  # フォールバックを記録
+                self.chrome.execute_script("arguments[0].click();", next_element)  # JSで強制クリック
 
-            try:
-                # ページ遷移で next_el が Stale になるのを待つ
-                WebDriverWait(self.chrome, timeout).until(EC.staleness_of(next_el))  # 参照が無効化されるまで待機
-            except Exception:
-                # それでも検知できない場合はURL変化で判定
-                WebDriverWait(self.chrome, timeout).until(
-                    lambda d: d.current_url != before_url
-                )  # URLが変わることで遷移を確認
+            try:  # 遷移完了の検知（要素の無効化で判断）
+                WebDriverWait(self.chrome, timeout).until(EC.staleness_of(next_element))  # 旧要素がstaleになるまで待機
+            except Exception:  # staleが検知できない場合はURL変化で代替
+                WebDriverWait(self.chrome, timeout).until(  # URLが変わるまで待機
+                    lambda d: d.current_url != before_url  # 遷移の確認
+                )
 
-            self.wait_for_page_complete()  # 遷移先の読み込み完了待ち
-            random_sleep(0.6, 1.2)  # 遷移後の描画安定待ち
-            return True  # 次ページへ進めたことを示す
+            self.wait_for_page_complete()  # 遷移先ページの読み込み完了を待機
+            random_sleep(C_TIME.POST_NAV_MIN_SECONDS, C_TIME.POST_NAV_MAX_SECONDS)  # 遷移直後も間隔をばらす
+            return True  # 遷移成功
 
-        except TimeoutException:
-            logger.debug("次ページリンク待機タイムアウト")  # 見つからない/操作不可のまま時間切れ
-            return False  # 続行不可
-        except Exception as e:
-            logger.warning(f"click_next 失敗: {e}")  # 予期しない失敗
-            return False  # 安全側でFalseを返す
-
+        except TimeoutException:  # 待機タイムアウト
+            logger.debug("次ページリンク待機タイムアウト")  # 情報ログ
+            return False  # 失敗としてFalse
+        except Exception as e:  # その他の例外
+            logger.warning(f"click_next 失敗: {e}")  # 警告ログ
+            return False  # 失敗としてFalse
 
 
     # ==========================================================
     # メソッド定義
 
-    def get_title(self) -> str:
+    @staticmethod  # インスタンス不要で利用できるヘルパー
+    def _pick_src(element: WebElement) -> Optional[str]:  # 要素から適切な画像URLを抽出
         """
-        役割：詳細ページからタイトル文字列を取得。
-        - セレクタはサイト都合で難読クラス名。変更に弱い点に留意。
-        """  # 取得失敗時は例外を送出
-        try:
-            el = self.find_one(By.CSS_SELECTOR, "h1.gv-u-fontSize16--_aSkEz8L_OSLLKFaubKB")  # 見出し要素を取得
-            title = el.text.strip()  # 前後空白を除去して実値を得る
-            if not title:
-                raise ValueError("タイトルが取得できませんでした")  # 空文字は異常
-            logger.debug(f"タイトル取得: {title}")  # 取得内容を記録
-            return title  # タイトルを返却
-        except Exception as e:
-            logger.error(f"get_title失敗: {e}")  # 失敗理由を記録
-            raise  # 上位で判断
-
-
-
-    # ==========================================================
-    # メソッド定義
-
-    def get_price(self) -> int:
+        要素から src / data-src / srcset の順でURLを抽出して返す。
+        見つからない場合は None。
         """
-        役割：詳細ページから価格を取得して整数に変換。
-        - 「1,234円」→ カンマ・円記号を除去 → intに変換。
-        """  # 価格表記を数値に正規化
-        try:
-            el = self.find_one(By.CSS_SELECTOR, "span.sc-1f0603b0-2.kxUAXU")  # 価格表示の要素を検索
-            price_text = el.text.strip().replace(",", "").replace("円", "")  # 数値以外の装飾を除去
-            if not price_text:
-                raise ValueError("価格が取得できませんでした")  # 空は異常
-            price = int(price_text)  # 文字列→整数に変換
-            logger.debug(f"価格取得: {price}")  # 取得値を記録
-            return price  # 価格（整数）を返却
-        except Exception as e:
-            logger.error(f"get_price失敗: {e}")  # 失敗内容をログ
-            raise  # 上位での処理に委ねる
-
+        src: Optional[str] = element.get_attribute("src")  # まずは通常のsrc属性を参照
+        if src:  # 取得できればそれを返す
+            return src  # src優先
+        data_src: Optional[str] = element.get_attribute("data-src")  # 遅延読み込みで使われるdata-src
+        if data_src:  # あれば採用
+            return data_src  # data-srcを返す
+        srcset: Optional[str] = element.get_attribute("srcset")  # 複数解像度のURLリスト
+        if srcset:  # 文字列があれば最初のURLを抽出
+            first: str = srcset.split(",")[0].strip().split(" ")[0]  # "URL 1x"形式からURL部分を取得
+            return first or None  # 空でなければ返す
+        return None  # いずれの属性にもURLが無い場合
 
 
     # ==========================================================
     # メソッド定義
 
-    def get_image_url(self, driver=None, wait_seconds: int = 2) -> str:
-        """
-        役割：詳細ページの代表画像URLを取得。
-        - 優先度順にXPATHで探索し、最初に見つかった妥当なsrc系属性を返す。
-        - フォールバック時はログでサイズの注意喚起。
-        """  # 画像の取得戦略を段階的に実行
-        if driver is None:
-            driver = self.chrome  # デフォルトは自身のドライバ
-        if driver is None:
-            # 呼び出し順が不正な場合（create_chrome相当が未実行など）
-            raise RuntimeError("WebDriver is not initialized. Call create_chrome() first.")  # 前提未満足
-
-        candidates = [
-            {
-                "label": "1200x900",
-                "xpath": '//img[contains(@src, "i-img1200x900")]',
-                "is_fallback_small": False,
-            },
-            {
-                "label": "auc-pctr CDN",
-                "xpath": '//img[contains(@src, "auc-pctr.c.yimg.jp") and contains(@src, "/i/")]',
-                "is_fallback_small": False,
-            },
-            {
-                "label": "fallback small",
-                "xpath": '//img[contains(@src, "auctions.c.yimg.jp")]',
-                "is_fallback_small": True,
-            },
-        ]  # 上から順に優先度が高い
-
+    def get_title(self) -> str:  # 詳細ページのタイトル文字列を取得
+        last_exception: Optional[Exception] = None  # 最後に遭遇した例外を保持
+        for kind, sel in C_SEL.TITLE_SELECTORS:  # 複数のセレクタ候補を順に試す
+            by, value = _locators_to_by_tuple((kind, sel))  # (By, 値)に変換
+            try:  # 取得を試みる
+                element: WebElement = self.find_one(by, value, timeout=C_TIME.FIND_TIMEOUT)  # 要素を待って取得
+                title = element.text.strip()  # 文字列を整形（前後空白除去）
+                if title:  # 非空であれば成功
+                    logger.debug(f"タイトル取得({kind}:{sel}): {title}")  # デバッグログ
+                    return title  # タイトルを返す
+            except Exception as e:  # 失敗した場合
+                last_exception = e  # 例外を更新
+                continue  # 次の候補へ
+        logger.error(f"get_title失敗: {last_exception}")  # すべて失敗時のエラー記録
+        raise last_exception if last_exception else ValueError("タイトルが取得できませんでした")  # 適切な例外を投げる
 
 
     # ==========================================================
     # メソッド定義
 
-        def pick_src(el) -> str | None:
-            """
-            役割：img要素から適切なURLを取り出す。
-            - src → data-src → srcset（先頭） の順に確認。
-            """  # 取得できなければNoneで返す
-            src = el.get_attribute("src")
-            if src:
-                return src  # 通常はsrcが最優先
-            data_src = el.get_attribute("data-src")
-            if data_src:
-                return data_src  # 遅延読み込み用属性を利用
-            srcset = el.get_attribute("srcset")
-            if srcset:
-                first = srcset.split(",")[0].strip().split(" ")[0]  # 複数候補の先頭を採用
-                return first or None  # 空文字対策
-            return None  # どれも無ければNone
-
-        last_error = None  # 失敗理由の記録（最終的にデバッグ出力用）
-
-        for c in candidates:
-            try:
-                elems = WebDriverWait(driver, wait_seconds).until(
-                    EC.presence_of_all_elements_located((By.XPATH, c["xpath"]))
-                )  # 候補XPATHに合致する全imgを短時間待機
-                for el in elems:
-                    url = pick_src(el)  # src/data-src/srcsetの順でURLを取得
-                    if not url:
-                        continue  # URLが取れない要素はスキップ
-
-                    if c["is_fallback_small"]:
-                        logger.warning(f"fallback画像URL取得(小サイズの可能性): {url}")  # フォールバックは警告
-                    else:
-                        # 優先URLはinfoで明示
-                        if "1200x900" in url or "auc-pctr.c.yimg.jp" in url:
-                            logger.debug(f"優先画像URL取得(1200x900): {url}")  # 望ましい解像度
-                        else:
-                            logger.debug(f"優先画像URL取得: {url}")  # その他の優先候補
-                    return url  # 最初に見つかった有効URLを返却
-
-                # 要素は見つかったが src 系属性が無い場合
-                last_error = RuntimeError(f"{c['label']}: img は見つかったが src なし。")  # 次の候補に回す
-            except TimeoutException as e:
-                last_error = e  # 待機で見つからなかった
-            except Exception as e:
-                last_error = e  # 想定外の例外
-
-        if last_error:
-            logger.debug(f"画像候補の全探索が失敗: {last_error}")  # なぜ失敗したかを記録
-        raise RuntimeError("画像URLを取得できませんでした。")  # いずれの候補でも取得不可の場合
-
+    def get_price(self) -> int:  # 詳細ページの価格を整数で取得
+        last_exception: Optional[Exception] = None  # 直近の例外を保持
+        for kind, sel in C_SEL.PRICE_SELECTORS:  # 価格用の複数セレクタを試す
+            by, value = _locators_to_by_tuple((kind, sel))  # (By, 値)に変換
+            try:  # 取得試行
+                element: WebElement = self.find_one(by, value, timeout=C_TIME.FIND_TIMEOUT)  # 要素を取得
+                price_text = element.text.strip()  # 価格テキストを整形
+                for token in C_SEL.PRICE_STRIP_TOKENS:  # 通貨記号/カンマ等の除去対象
+                    price_text = price_text.replace(token, "")  # 不要文字を除去
+                if not price_text:  # 空なら次候補へ
+                    continue  # ループ継続
+                price = int(price_text)  # 整数へ変換（失敗時は例外）
+                logger.debug(f"価格取得({kind}:{sel}): {price}")  # 取得結果を記録
+                return price  # 価格を返す
+            except Exception as e:  # 個別候補の失敗
+                last_exception = e  # 例外を記録
+                continue  # 次候補へ
+        logger.error(f"get_price失敗: {last_exception}")  # 全候補で失敗
+        raise last_exception if last_exception else ValueError("価格が取得できませんでした")  # 例外を送出
 
 
     # ==========================================================
     # メソッド定義
 
-    def get_item_info(self) -> dict:
-        """
-        役割：詳細ページから title/price/image_url をまとめて取得して辞書で返す。
-        - どれかの取得に失敗したら例外（上位でのハンドリング前提）。
-        """  # まとめ取得の便宜関数
-        try:
-            item = {
-                "title": self.get_title(),
-                "price": self.get_price(),
-                "image_url": self.get_image_url(),
-            }  # 個別取得メソッドを組み合わせて辞書化
-            logger.debug(f"商品情報取得: {item}")  # 結果の全体像を記録
-            return item  # 呼び出し側でそのまま利用可能な形で返す
-        except Exception as e:
-            logger.error(f"get_item_info失敗: {e}")  # どの取得で失敗したかの手掛かり
-            raise  # 上位での再試行やスキップ判断に委ねる
+    def get_image_url(self, driver: Optional[WebDriver] = None, wait_seconds: Optional[int] = None) -> str:  # 商品画像のURLを1つ返す
+        if driver is None:  # 呼び出し側でdriver未指定なら
+            driver = self.chrome  # 内部保持のWebDriverを使用
+        if driver is None:  # 念のため二重チェック
+            raise RuntimeError("WebDriver is not initialized.")  # 初期化漏れを明示
 
+        wait_seconds = int(C_TIME.IMAGE_WAIT_SECONDS if wait_seconds is None else wait_seconds)  # 待機秒の決定
 
+        last_error: Optional[Exception] = None  # 最後に起きた例外を保持（ログ用）
 
-    # ==========================================================
-    # メソッド定義
+        for candidate in C_SEL.IMAGE_XPATH_CANDIDATES:  # 定義済みのXPATH候補を順に試す
+            try:  # 各候補について要素群の存在を待機
+                elements: List[WebElement] = WebDriverWait(driver, wait_seconds).until(  # 指定秒内に要素が現れるか
+                    EC.presence_of_all_elements_located((By.XPATH, candidate["xpath"]))  # 一致要素の存在条件
+                )
+                for element in elements:  # 見つかった要素ごとにURL抽出
+                    url = self._pick_src(element)  # src/data-src/srcsetの順でURLを取り出す
+                    if not url:  # URLが取れない要素はスキップ
+                        continue  # 次の要素へ
+                    if candidate.get("is_fallback_small"):  # 小さめ画像のフォールバック候補か
+                        _log_fallback_image(url)  # フォールバックである旨をログ記録
+                    else:  # 優先候補の場合
+                        if _is_large_image_url(url):  # 大サイズが期待できるかを判定
+                            logger.debug(f"優先画像URL取得(1200x900相当): {url}")  # 大サイズの旨を記録
+                        else:  # ヒントなし
+                            logger.debug(f"優先画像URL取得: {url}")  # 通常の優先候補として記録
+                    return url  # 最初に得られた有効URLを返す
+                last_error = RuntimeError(f"{candidate['label']}: img は見つかったが src なし。")  # 要素はあるがURLなし
+            except TimeoutException as e:  # 要素が現れずタイムアウト
+                last_error = e  # 例外を保持
+            except Exception as e:  # その他の予期せぬ失敗
+                last_error = e  # 例外を保持
 
-    def get_detail_end_date(self) -> str:
-        """
-        役割：詳細ページ内の「終了日時」テキストを取得。
-        - 難読クラス名のため将来変更に弱い。複数要素から条件（'終了' or '時' を含む）で拾う。
-        """  # 条件一致する最初の文字列を返す
-        try:
-            elements = self.chrome.find_elements(
-                By.CSS_SELECTOR,
-                "span.gv-u-fontSize12--s5WnvVgDScOXPWU7Mgqd.gv-u-colorTextGray--OzMlIYwM3n8ZKUl0z2ES",
-            )  # 対象の情報が含まれがちなスパンを一覧取得
-            for el in elements:
-                text = el.text.strip()  # 前後空白除去
-                if text and ("終了" in text or "時" in text):
-                    logger.debug(f"終了日取得: {text}")  # 抽出に成功したテキストを記録
-                    return text  # 条件を満たしたテキストを返す
-            raise ValueError("終了日が取得できませんでした")  # 全て不一致の場合は異常
-        except Exception as e:
-            logger.error(f"get_detail_end_date失敗: {e}")  # 失敗ログ
-            raise  # 上位判断へ
-
+        if last_error:  # 全候補で失敗した場合は詳細を出す
+            logger.debug(f"画像候補の全探索が失敗: {last_error}")  # 直近の例外を含めて記録
+        raise RuntimeError("画像URLを取得できませんでした。")  # 呼び出し側へ失敗を通知
 
 
     # ==========================================================
     # メソッド定義
 
-    def click_past_auction_button(self, timeout: int = 6) -> bool:
-        """
-        役割：「落札相場/過去の落札」ボタンをクリック。
-        - 候補セレクタを順に試し、クリック不可ならJSクリックにフォールバック。
-        - 見つからなければ False。
-        """  # 過去の落札結果表示に遷移させる操作
-        try:
-            self.wait_for_page_complete()  # 事前にページ安定を待つ
-            candidates = [
-                (By.CSS_SELECTOR, ".Auction__pastAuctionBtn"),
-                (By.XPATH, "//button[contains(., '落札相場') or contains(., '過去の落札')]"),
-                (By.XPATH, "//a[contains(., '落札相場') or contains(., '過去の落札')]"),
-            ]  # ボタン/リンクの有力候補
+    def get_item_info(self) -> dict[str, Any]:  # 商品情報をまとめて辞書で返す
+        try:  # いずれかの取得が失敗する可能性に備える
+            item_info: dict[str, Any] = {  # 結果を辞書にまとめる
+                "title": self.get_title(),  # タイトル文字列
+                "price": self.get_price(),  # 価格（int）
+                "image_url": self.get_image_url(),  # 画像URL（str）
+            }
+            logger.debug(f"商品情報取得: {item_info}")  # 取得結果の全体像を記録
+            return item_info  # 辞書を返す
+        except Exception as e:  # どこかで例外が発生した場合
+            logger.error(f"get_item_info失敗: {e}")  # 失敗内容を記録
+            raise  # 例外を再送出
 
-            btn = None  # 見つかったボタンの格納先
-            for by, sel in candidates:
-                try:
-                    btn = WebDriverWait(self.chrome, timeout).until(
-                        EC.element_to_be_clickable((by, sel))
-                    )  # クリック可能になるまで待機
-                    if btn:
-                        break  # 最初に見つかった候補で決定
-                except Exception:
-                    continue  # 次の候補へ
 
-            if not btn:
-                logger.debug("落札相場ボタンが見つかりませんでした")  # UIが無い/条件不一致など
-                return False  # 操作不能を通知
+    # ==========================================================
+    # メソッド定義
 
-            try:
-                btn.click()  # 通常クリック
-            except ElementClickInterceptedException:
-                # 覆い被さる要素等でクリックできない場合はJSでクリック
-                self.chrome.execute_script("arguments[0].click();", btn)  # JSクリックを実施
+    def get_detail_end_date(self) -> str:  # 詳細ページの「終了日」表記を取得する
+        try:  # セレクタ候補を順に試す
+            for kind, sel in C_SEL.DETAIL_END_DATE_SPANS:  # span等の候補セレクタ群
+                by, value = _locators_to_by_tuple((kind, sel))  # (By, 値)へ変換
+                elements: List[WebElement] = self.chrome.find_elements(by, value)  # 一致要素を全取得
+                for element in elements:  # 各要素のテキストを確認
+                    text: str = (element.text or "").strip()  # Noneガード＋前後空白除去
+                    if text and any(key in text for key in C_SEL.DETAIL_END_DATE_KEYWORDS):  # キーワードを含むか
+                        logger.debug(f"終了日取得({kind}:{sel}): {text}")  # 取得できた値を記録
+                        return text  # 最初に見つかったものを返す
+            raise ValueError("終了日が取得できませんでした")  # 全候補失敗時
+        except Exception as e:  # 例外が出た場合
+            logger.error(f"get_detail_end_date失敗: {e}")  # 失敗内容を記録
+            raise  # 例外を上位へ
+
+
+    # ==========================================================
+    # メソッド定義
+
+    def click_past_auction_button(self, timeout: Optional[int] = None) -> bool:  # 落札相場ボタンを探してクリックする
+        timeout = int(C_TIME.PAST_AUCTION_TIMEOUT if timeout is None else timeout)  # 待機時間の決定
+        try:  # 一連の操作を例外に強く実施
+            self.wait_for_page_complete()  # 現在ページの読み込み完了を確認
+            past_auction_button: Optional[WebElement] = None  # ボタン参照の初期化
+            for locator_tuple in C_SEL.PAST_AUCTION_BUTTON_LOCATORS:  # 候補ロケータを順に試す
+                by, sel = _locators_to_by_tuple(locator_tuple)  # (By, 値)へ変換
+                try:  # クリック可能になるまで待機
+                    past_auction_button = WebDriverWait(self.chrome, timeout).until(  # 指定時間内にクリック可能に
+                        EC.element_to_be_clickable((by, sel))  # 表示かつ有効が条件
+                    )
+                    if past_auction_button:  # 見つかったら
+                        break  # 以降の候補は不要
+                except Exception:  # その候補での失敗
+                    continue  # 次候補へ
+
+            if not past_auction_button:  # どの候補でも見つからない場合
+                logger.debug("落札相場ボタンが見つかりませんでした")  # 情報ログ
+                return False  # 失敗としてFalse
+
+            try:  # まず通常クリックを試みる
+                past_auction_button.click()  # クリック実行
+            except ElementClickInterceptedException:  # 別要素で遮られた場合
+                self.chrome.execute_script("arguments[0].click();", past_auction_button)  # JSクリックでフォロー
 
             logger.debug("落札相場ボタンをクリック")  # 成功ログ
-            random_sleep(0.4, 0.9)  # 遷移・描画の安定待ち
-            return True  # 成功を通知
+            random_sleep(0.4, 0.9)  # 画面変化の安定待ち
+            return True  # 成功
 
-        except Exception as e:
-            logger.warning(f"落札相場ボタン押下失敗: {e}")  # 想定外の失敗は警告レベルで記録
-            return False  # 安全側でFalseを返す
-
-
-
-
-
-# ==============
-# 実行の順序
-# ==============
-# 1. モジュール（time/logging/random/re と Selenium 関連）をimportする
-# → 待機・ログ・乱数・例外型・要素探索の機能を読み込む。補足：By と TimeoutException は重複importだが動作は変わらない。
-
-# 2. logger = logging.getLogger(name) を実行する
-# → このモジュール専用のロガーを取得する。補足：以降のDEBUG/INFO/ERRORがここに記録される。
-
-# 3. 関数 _log_fallback_image(url) を定義する
-# → 画像URLのサイズ目安からログレベル（info/warning）を切り替える。補足：単純な文字列包含で判定する簡易ロジック。
-
-# 4. 関数 random_sleep(min_seconds, max_seconds) を定義する
-# → min〜maxの範囲でランダム秒sleepしてアクセス間隔をばらす。補足：Bot検知回避・負荷軽減のための一手。
-
-# 5. 関数 _is_large_image_url(url) を定義する
-# → URLに特定の数字/パターンが含まれるかで“大きめ画像”かを真偽で返す。補足：厳密判定ではなくヒューリスティック。
-
-# 6. class Selenium を定義する
-# → WebDriver操作のユーティリティをまとめる器を用意する。補足：ここまで“定義”であり実行はされない。
-
-# 7. メソッド init(self, chrome) を定義する
-# → 渡された WebDriver を self.chrome に保持する。補足：以降の操作はこのハンドル経由で行う。
-
-# 8. メソッド wait_for_page_complete(self, timeout=10) を定義する
-# → document.readyState==‘complete’ になるまで明示的待機する。補足：タイムアウト時は例外を送出（上位で再試行判断）。
-
-# 9. メソッド find_one(self, by, value, timeout=10) を定義する
-# → 要素が現れるまで待って単一要素を返す。補足：見つからなければログして例外を投げる。
-
-# 10. メソッド find_many(self, by, value, timeout=10) を定義する
-# → 最低1つの出現を待ち、該当要素のリストを返す。補足：空リストは異常として例外を投げる。
-
-# 11. メソッド click(self, by, value, timeout=10) を定義する
-# → 要素取得後にクリックし、遮られたらJSクリックにフォールバック。補足：クリック後は random_sleep で描画安定を待つ。
-
-# 12. メソッド get_auction_end_dates(self) を定義する
-# → 複数CSSセレクタを試して“終了日時”テキスト群を抽出する。補足：取得できなければ空配列で返し処理継続方針。
-
-# 13. メソッド collect_image_src_candidates(self) を定義する
-# → 優先度付きXPATHでのsrc候補を集めて重複除去し返す。補足：self.driver を前提にしており未設定だと例外になる点が混乱ポイント。
-
-# 14. メソッド get_auction_urls(self) を定義する
-# → 一覧ページから商品詳細のhrefを複数収集する。補足：セレクタを順に試し、取れなければ空配列で返す。
-
-# 15. メソッド click_next(self, timeout=8) を定義する
-# → 「次へ」リンクを複数ロケータで探し、通常→JSクリックの順に試す。補足：URL変化やstalenessで遷移確認し、成功可否を真偽で返す。
-
-# 16. メソッド get_title(self) を定義する
-# → 難読クラスのh1からタイトル文字列を取得する。補足：空なら異常として例外を投げる（サイト変更に弱い）。
-
-# 17. メソッド get_price(self) を定義する
-# → 価格テキストからカンマ/円を除去して int に変換する。補足：数値化できなければ例外を投げる。
-
-# 18. メソッド get_image_url(self, driver=None, wait_seconds=2) を定義する
-# → 複数XPATH候補からimg要素を見つけ、src→data-src→srcsetの順でURLを抽出する。補足：優先候補が無ければ警告ログのうえ最後は例外。
-
-# 19. メソッド get_item_info(self) を定義する
-# → get_title / get_price / get_image_url を呼んで辞書{“title”,“price”,“image_url”}にまとめて返す。補足：どれか失敗で例外（上位でスキップ判断）。
-
-# 20. メソッド get_detail_end_date(self) を定義する
-# → 複数spanの中から「終了」や「時」を含むテキストを拾って返す。補足：見つからなければ例外（セレクタ変更に弱い）。
-
-# 21. メソッド click_past_auction_button(self, timeout=6) を定義する
-# → 「落札相場/過去の落札」ボタンを探してクリックし、不可ならJSクリックへ。補足：見つからない/失敗時は False を返して安全側に倒す。
+        except Exception as e:  # 予期しない失敗
+            logger.warning(f"落札相場ボタン押下失敗: {e}")  # 警告ログを記録
+            return False  # 失敗としてFalseを返す
+        

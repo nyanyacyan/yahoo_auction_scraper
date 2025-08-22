@@ -1,191 +1,122 @@
-# # ==========================================================
-# # import（標準、プロジェクト内モジュール）
+# ==========================================================
+# import（標準、プロジェクト内モジュール）  # ここから必要なモジュールを読み込む
 
-# import re        # 正規表現を使って文字列から数値を抽出するために使用
-# import logging   # エラー発生時のログ出力に使用
-
-
-
-# # ==========================================================
-# # ログ設定
-
-# logger = logging.getLogger(__name__)  # このモジュール専用のロガー
+import re  # 正規表現を扱う標準ライブラリ（パターンのコンパイルや検索に使用）
+import logging  # ログ出力用の標準ライブラリ（デバッグ情報の記録に使用）
+import unicodedata  # 文字正規化（NFKCなど）を行うための標準ライブラリ
+from typing import ClassVar, Any  # 型ヒント用。ClassVarや任意型Anyを使う
+try:
+    from installer.src.const import num as C_NUM  # type: ignore  # プロジェクトのct抽出設定を読み込む（存在しない場合はexceptへ）
+except Exception:  # フォールバック既定  # 上記importに失敗した場合はこちらを使う
 
 
-
-# # ==========================================================
-# # class定義
-
-# class NumExtractor:  # 商品タイトル等から「◯◯ct」の数値部分を抽出するクラス
-#     """
-#     役割：テキスト（例：商品タイトル）から「◯◯ct」の数値部分を抽出するユーティリティ。
-#     想定入力例："ダイヤ 0.50ct ルース" → 0.50 を float で返す。
-#     """
-
-
-
-#     # ==========================================================
-#     # 静的メソッド（インスタンス化不要で利用可能）
-
-#     @staticmethod  # 静的メソッド化：インスタンス生成せず NumExtractor.extract_ct_value(...) と呼べる
-#     def extract_ct_value(text: str) -> float:  # 与えられた文字列から「数値+ct」を抽出してfloatで返す
-#         """
-#         引数: text … "0.5ct" のように「数値 + ct」を含む文字列
-#         戻り値: ct値（float）。複数ある場合は最後のものを採用（例："0.3ct 0.5ct" → 0.5）
-#         例外: 該当パターンが見つからない/数値変換失敗時には ValueError を送出
-#         """
-#         try:  # 例外が起きても呼び出し側に明確に知らせるため、まずtryで囲む
-#             # パターン説明:
-#             #  - [0-9]+(?:\.[0-9]+)? : 整数または小数（例 0.5）
-#             #  - \s*                 : 数値と"ct"の間の任意の空白を許容
-#             #  - ct                  : 単位。大文字小文字は re.IGNORECASE で無視
-#             pattern = r'([0-9]+(?:\.[0-9]+)?)\s*ct'  # 「数値 + 任意空白 + ct」にマッチする正規表現
-#             # findallは一致した数値部分のリストを返す。複数ある場合があるため注意
-#             matches = re.findall(pattern, text, re.IGNORECASE)  # すべての一致を取得（大文字小文字無視）
-#             if not matches:  # マッチが1件もない場合のガード
-#                 # 初学者ポイント：例外を投げることで呼び出し元に「失敗」を明確に通知する
-#                 raise ValueError(f"'ct'直前の数値が見つかりません: {text}")  # 想定外フォーマットとしてValueError
-
-#             # 複数マッチした場合、慣例として「最後の値」を採用（最新・主要情報を末尾に書くタイトル想定）
-#             ct_value = float(matches[-1])  # 文字列の数値をfloatへ変換（例："0.50" → 0.5）
-#             return ct_value  # 抽出・変換に成功した数値を返す
-
-#         except Exception as e:  # あらゆる例外を捕捉し、内容をログに残してから再送出
-#             # 何が原因で失敗したか（textとエラー内容）をログに残す。デバッグ時に有用
-#             logger.error(f"ct数値抽出エラー: {e} | text='{text}'")  # 失敗時の詳細ログ
-#             raise  # ここで握りつぶさず、上位に例外を再送出
+    # ==========================================================
+    # class定義  # ChromeDriver生成を簡略化するラッパークラスを定義する
+    class _FallbackNumConst:  # フォールバック用の定数クラス（最小限の設定で動作可能）
+        NUM_REGEX = r"[0-9０-９]+(?:[.,．][0-9０-９]+)?"  # 数値パターン（全角数字と小数点/カンマに対応）
+        UNIT_CT_REGEX = r"ct"  # 単位のパターン（ct）
+        IGNORECASE = True  # 大文字/小文字を無視するか（ct/CTなどを区別しない）
+        PICK_STRATEGY = "max"  # "max" or "first"  # 複数候補がある場合の選択戦略
+        NORMALIZE_NFKC = True  # 文字列をNFKCで正規化するか（全角→半角など）
+        DOT_FULLWIDTH = "．"  # 全角ドットの定義（NFKC後も残る可能性に対応）
+        LOG_CANDIDATES_LEVEL = logging.INFO  # 複数候補時のログ出力レベル
+    C_NUM = _FallbackNumConst()  # type: ignore  # 実プロジェクトの定数が無い場合にこちらを参照する
+    # 空行: ここからct用の正規表現コンパイル関数
 
 
+# ==========================================================
+# ログ設定  # このモジュール専用のロガーを取得して以降の情報出力に用いる
+
+logger: logging.Logger = logging.getLogger(__name__)  # このモジュール専用のロガーを取得
 
 
+# ==========================================================
+# 関数定義
+
+def _compile_ct_pattern() -> re.Pattern[str]:  # 数値+ctの並びにマッチする正規表現を作って返す
+    num_pattern = getattr(C_NUM, "NUM_REGEX", r"[0-9０-９]+(?:[.,．][0-9０-９]+)?")  # 定数から数値パターンを取得（無ければ既定）
+    unit_pattern = getattr(C_NUM, "UNIT_CT_REGEX", r"ct")  # 単位のパターンを取得（無ければct）
+    flags = re.IGNORECASE if getattr(C_NUM, "IGNORECASE", True) else 0  # 大文字小文字の無視フラグを設定
+    compiled_pattern = rf"({num_pattern})\s*(?:{unit_pattern})(?![A-Za-z0-9０-９])"  # 数値＋任意空白＋ct、末尾は英数が続かない条件
+    return re.compile(compiled_pattern, flags)  # コンパイルしてPatternオブジェクトを返す
+    # 空行: ここから抽出クラス定義
 
 
+# ==========================================================
+# class定義
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import re
-import logging
-import unicodedata
-from typing import Optional
-
-logger = logging.getLogger(__name__)
-
-class NumExtractor:
+class NumExtractor:  # タイトル文字列からct（カラット）数値を抽出するためのユーティリティクラス
     """
     タイトルから ct の数値を抽出するユーティリティ。
+    - const/num.py で数値・単位パターン、大小選択戦略などを上書き可能
+    - 複数ある場合の既定は最大値採用（PICK_STRATEGY="max"）
+    """  # クラスの用途と設定ポイントの説明（ドキュメンテーション文字列）
 
-    仕様:
-    - タイトル中に ct が複数ある場合、**最初に出現したもの**を採用
-    - 「0.5ct」「0.50 ct」「ct0.5」「ct 0.5」「０．５ｃｔ」など表記ゆれに対応
-    - 桁区切り(,)と全角→半角を正規化して float に変換
-    - 見つからない/不正値は ValueError
-    """
+    _CT_PATTERN: ClassVar[re.Pattern[str]] = _compile_ct_pattern()  # クラス共通の正規表現を1回だけ作成し再利用
 
-    # 数値（半角/全角 & 小数/カンマ対応）
-    _NUM = r"[0-9０-９]+(?:[.,．][0-9０-９]+)?"
 
-    # 「数値 + ct」または「ct + 数値」のどちらも拾う複合パターン
-    # 例: 0.5ct / 0.5 ct / ct0.5 / ct 0.5 / ０．５ｃｔ / ｃｔ０．５
-    _RE_CT_BOTH = re.compile(
-        rf"(?i)(?:(?P<pre>{_NUM})\s*ct(?![A-Za-z0-9０-９])|(?<![A-Za-z0-9０-９])ct\s*[:：]?\s*(?P<post>{_NUM}))"
-    )
+    # ==========================================================
+    # コンストラクタ
 
-    @staticmethod
-    def _normalize_text(s: str) -> str:
-        # 全角→半角, 機種依存の小数点「．」→「.」
-        s = unicodedata.normalize("NFKC", s)
-        return s.replace("．", ".")
+    def __init__(self) -> None:  # コンストラクタ（特別な初期化は不要）
+        pass  # 何もしない（将来の拡張に備えたプレースホルダ）
 
-    @classmethod
-    def _parse_number(cls, raw: str) -> float:
-        raw = raw.replace(",", "")
-        try:
-            v = float(raw)
-        except Exception as e:
-            logger.error(f"ct数値の変換に失敗: raw='{raw}', err={e}")
-            raise ValueError("ct数値の変換に失敗")
-        if v <= 0:
-            logger.error(f"ct数値が0以下: value={v}")
-            raise ValueError("ct数値が0以下")
-        return v
 
-    @classmethod
-    def extract_ct_value(cls, title: str) -> float:
+    # ==========================================================
+    # メソッド定義
+
+    @staticmethod  # インスタンスを介さない純粋なヘルパーであることを明示
+    def _normalize_text(text: str) -> str:  # タイトル文字列を正規化（全角→半角・全角ドット置換）して返す
+        if getattr(C_NUM, "NORMALIZE_NFKC", True):  # 定数でNFKC正規化が有効なら実行
+            text = unicodedata.normalize("NFKC", text)  # 文字幅の統一や互換分解・合成を行う
+        full_dot = getattr(C_NUM, "DOT_FULLWIDTH", "．")  # 全角ドットの文字を定数から取得
+        return text.replace(full_dot, ".")  # 全角ドットを半角ドットに置換して返す
+
+
+    # ==========================================================
+    # メソッド定義
+
+    @staticmethod  # 数値変換のみを行う純粋関数として定義
+    def _to_float(raw: str) -> float:  # 抽出した数値文字列（カンマ含む）をfloatに変換して検証
+        cleaned_str = raw.replace(",", "").replace("，", "")  # 半角/全角カンマを除去して数値化しやすくする
+        numeric_value = float(cleaned_str)  # 文字列を浮動小数に変換（例外は呼び出し元で処理）
+        if numeric_value <= 0:  # 0以下は無効値として扱う
+            raise ValueError("ct数値が0以下")  # 不正値の明確なエラーを投げる
+        return numeric_value  # 正常な数値を返す
+
+
+    # ==========================================================
+    # メソッド定義
+
+    def extract_ct_value(self, title: str) -> float | None:  # タイトルからct値を抽出し、戦略に従って1つ選んで返す
         """
-        タイトルに含まれるct数値を返す（最初に出現したctを採用）
-        """
-        if not isinstance(title, str):
-            raise ValueError("titleはstrを期待します")
-        text = cls._normalize_text(title)
+        タイトル内に複数 'xx ct' がある場合、PICK_STRATEGY に従って値を決める。
+        - "max"   : 最大値（既定）
+        - "first" : 最初に出現した値
+        """  # 抽出ロジックの仕様（どの値を採用するか）を説明
 
-        # ★ 最初の一致（.search）= 最初のctを採用
-        m = cls._RE_CT_BOTH.search(text)
-        if not m:
-            logger.error(f"ct表記が見つかりません: title='{title}'")
-            raise ValueError("ct表記が見つかりません")
+        try:  # 例外があってもログに詳細を残すためtryで囲む
+            normalized_title = self._normalize_text(title)  # 正規化したタイトル（全角/記号のゆれを吸収）
+            match_iter_results = list(self._CT_PATTERN.finditer(normalized_title))  # 正規表現で全マッチを列挙
+            if not match_iter_results:  # 候補が1つも無ければ
+                logger.debug(f"ct抽出: 候補なし title='{title}'")  # デバッグログを残して
+                return None  # Noneを返す（呼び出し側で未抽出として扱う）
 
-        # 「数値+ct」なら 'pre'、 「ct+数値」なら 'post' に入る
-        raw = m.group("pre") or m.group("post")
-        value = cls._parse_number(raw)
-        logger.debug(f"ct抽出: title='{title}', match='{m.group(0)}', value={value}")
-        return value
+            candidate_values = [self._to_float(m.group(1)) for m in match_iter_results]  # マッチごとに数値部分をfloat化
+            pick_strategy: str = str(getattr(C_NUM, "PICK_STRATEGY", "max")).lower()  # 選択戦略（max/first）を取得し小文字化
 
+            if pick_strategy == "first":  # 最初の出現を採用する戦略
+                selected_value = candidate_values[0]  # 先頭の数値を選ぶ
+            else:  # 既定は"max"（最大値を採用）
+                selected_value = max(candidate_values)  # 複数候補の中から最大値を選ぶ
 
+            if len(candidate_values) > 1:  # 複数候補があれば
+                log_level = int(getattr(C_NUM, "LOG_CANDIDATES_LEVEL", logging.INFO))  # 候補配列のログレベルを取得
+                logger.log(log_level, f"ct候補: {candidate_values} → 採用={selected_value} | title='{title}'")  # 候補と採用値を記録
+            else:  # 候補が1つだけなら
+                logger.debug(f"ct抽出: {candidate_values} → 採用={selected_value} | title='{title}'")  # デバッグログのみ
 
-
-
-
-
-
-
-
-
-
-
-# ==============
-# 実行の順序
-# ==============
-# 1. モジュール re / logging をimportする
-# → 文字列検索（正規表現）とログ出力を使えるようにする準備。補足：ここでは処理はまだ動かない（読み込みだけ）。
-
-# 2. logger = logging.getLogger(name) を実行する
-# → このモジュール専用のロガーを取得する。補足：以降のエラー内容を一箇所に記録できる。
-
-# 3. class NumExtractor を定義する
-# → 「◯◯ct」の数値部分を取り出すためのユーティリティclassを用意する。補足：定義時点では動かず、呼び出されて初めて処理する。
-
-# 4. 静的メソッド extract_ct_value(text: str) を定義する（@staticmethod）
-# → インスタンス不要で NumExtractor.extract_ct_value(…) と呼べるメソッドを用意する。補足：classの責務を保ったまま手軽に使える。
-
-# 5. （メソッドが呼ばれたとき）try ブロックを開始する
-# → 以降の処理で起きた例外を捕捉して記録・再送出できるようにする。補足：失敗時の原因追跡を容易にするため。
-
-# 6. （メソッドが呼ばれたとき）正規表現パターン pattern を用意する
-# → 「数値（小数可）＋任意空白＋’ct’」にマッチする表現を組み立てる。補足：大文字小文字は無視（IGNORECASE）。
-
-# 7. （メソッドが呼ばれたとき）re.findall で一致する数値文字列のリストを取得する
-# → text内のすべての「◯◯ct」に対応する数値部分を抜き出す。補足：複数見つかる可能性がある。
-
-# 8. （メソッドが呼ばれたとき）一致が無ければ ValueError を送出する
-# → 想定フォーマットでないことを明確に呼び出し元へ知らせる。補足：早めに失敗させることで不正データの混入を防ぐ。
-
-# 9. （メソッドが呼ばれたとき）一致があれば最後の要素を float に変換して返す
-# → タイトル末尾が最新情報という想定で matches[-1] を採用する。補足：例：“0.3ct 0.5ct” → 0.5 を返す。
-
-# 10. （例外発生時のみ）except で logger.error に詳細を記録し、例外を再送出する
-# → 失敗の内容と入力textをログに残し、呼び出し元へ例外を渡す。補足：握りつぶさずに原因追跡と上位でのハンドリングを両立する。
+            return selected_value  # 決定したct値を返す
+        except Exception as err:  # 変換失敗や正規表現の想定外エラーを捕捉
+            logger.error(f"ct抽出エラー: {err}", exc_info=True)  # スタックトレース付きでエラーを記録
+            raise  # 呼び出し側で適切に処理できるよう、例外を再送出する

@@ -1,68 +1,73 @@
 # ==========================================================
-# import（標準、プロジェクト内モジュール）
+# import（標準、プロジェクト内モジュール）  # ここから必要なモジュールを読み込む
 
 import logging  # ログ出力用。動作確認やエラー原因の記録に使う
-
+from installer.src.const import sheets as C_SHEET  # ★ 画像式の定数を一元管理（テンプレートやサイズなど）
+    # 空行: import セクションとロガー設定の区切り（コードの見通しを良くする）
 
 
 # ==========================================================
-# ログ設定
+# ログ設定  # このモジュールで使うロガー（名前付き）を用意する
 
-logger = logging.getLogger(__name__)  # このモジュール専用のロガーを取得
-
+logger: logging.Logger = logging.getLogger(__name__)  # このモジュール専用のロガーを取得
+# 空行: ここからクラス定義セクションに移る
 
 
 # ==========================================================
 # class定義
 
-class ImageDownloader:  # 画像URLからスプレッドシートのIMAGE関数文字列を作るユーティリティクラス
-    # 役割：画像URLを受け取り、セルに貼れる =IMAGE(...) 形式の文字列を返す（外部通信は行わない）
-
+class ImageDownloader:  # ユーティリティクラス：外部通信は行わず、文字列を生成して返す
+    """画像URLからスプレッドシートのIMAGE関数文字列を作るユーティリティクラス
+    役割：画像URLを受け取り、セルに貼れる =IMAGE(...) 形式の文字列を返す（外部通信は行わない）
+    """
+        # 空行: docstring がクラスの役割を説明している。ここからメソッド定義へ
 
 
     # ==========================================================
-    # 静的メソッド（インスタンス化不要で利用可能）
+    # コンストラクタ
 
-    @staticmethod  # インスタンスを作らずに呼べることを示すデコレータ
-    def get_image_formula(image_url: str) -> str:  # 画像URLからIMAGE式の文字列を生成して返す
-        # 引数 image_url: 画像のURL（文字列）。これを =IMAGE("...", 4, 80, 80) に埋め込む
-        # 戻り値: スプレッドシートにそのまま貼れる IMAGE 関数の文字列
-
-        if not image_url or not isinstance(image_url, str):  # URLが空 or 文字列以外なら不正と判定
-            # 初学者がつまずきやすいポイント：入力値検証（バリデーション）で早期に弾く
-            logger.error("画像URLが不正です: %r", image_url)  # 不正値をログに残し原因調査を容易にする
-            raise ValueError("画像URLが不正です")  # 呼び出し側が捕捉できるようにValueErrorを送出
-        
-        formula = f'=IMAGE("{image_url}", 4, 80, 80)'  # f文字列でIMAGE式を組み立て（4=カスタム、80x80px）
-        # GoogleスプレッドシートのIMAGE関数：第1引数=URL、第2引数=4でカスタムサイズ、第3/4=幅/高さ(px)
-
-        logger.debug(f"IMAGE式生成: {formula}")  # 生成結果をデバッグログに出力（動作確認に有用）
-        return formula  # 完成した式を返す（呼び出し側はセルに書き込むだけで画像表示）
+    def __init__(self) -> None:  # コンストラクタ（現時点で状態は持たない）
+        """インスタンス生成時の初期化（現在は状態を持たない）"""
+        pass  # 何も初期化しないことを明示（将来の拡張余地を残す）
+        # 空行: ここから主要ロジック（IMAGE式の生成）を行うメソッド
 
 
+    # ==========================================================
+    # メソッド定義
+
+    def build_image_formula(self, image_url: str) -> str:  # 与えられたURLからIMAGE関数の文字列を作って返す
+        """画像URLからIMAGE式の文字列を生成して返す（インスタンスメソッド）
+
+        Args:
+            image_url: 画像のURL（文字列）
+
+        Returns:
+            スプレッドシートにそのまま貼れる IMAGE 関数の文字列
+        """
+        if not image_url or not isinstance(image_url, str):  # 入力の存在と型をチェック（学習者が誤って数値等を渡すのを防ぐ）
+            logger.error("画像URLが不正です: %r", image_url)  # 具体的な値を含めてデバッグしやすくする
+            raise ValueError("画像URLが不正です")  # 早期に不正入力を通知し、以降の処理を止める
+
+        # const からテンプレート/各値を取得して埋め込み  # 仕様を一元管理することで散在を防ぐ
+        image_formula: str = C_SHEET.SHEET_IMAGE_TEMPLATE.format(  # 文字列テンプレートに値を差し込んで式を生成
+            url=image_url,  # 画像URL（ユーザー入力）
+            mode=C_SHEET.SHEET_IMAGE_MODE,  # 画像の表示モード（例: 4=カスタム）
+            width=C_SHEET.SHEET_IMAGE_WIDTH_PX,  # 画像幅(px)。列幅に合わせるなどの調整用
+            height=C_SHEET.SHEET_IMAGE_HEIGHT_PX,  # 画像高さ(px)。セル内での見え方を統一
+        )
+
+        logger.debug(f"IMAGE式生成: {image_formula}")  # 生成結果をデバッグ出力（不具合時の追跡に有用）
+        return image_formula  # 完成したIMAGE関数の文字列を呼び出し元へ返す
+        # 空行: 下は旧コードとの互換API（静的メソッド）を提供
 
 
+    # ==========================================================
+    # メソッド定義
 
-# ==============
-# 実行の順序
-# ==============
-# 1. モジュール logging をimportする
-# → ログ出力の機能を読み込む。補足：この時点では処理は実行されない。
-
-# 2. logger = logging.getLogger(name) を実行する
-# → このモジュール専用のロガーを取得する。補足：以降のDEBUG/ERRORがここに記録される。
-
-# 3. class ImageDownloader を定義する
-# → 画像URLからスプレッドシート用の =IMAGE(…) 文字列を作るユーティリティclass。補足：定義は実行ではない。
-
-# 4. 静的メソッド get_image_formula(image_url) を定義する（@staticmethod）
-# → インスタンス化せずに ImageDownloader.get_image_formula(…) の形で呼べる。補足：状態を持たない純粋な変換処理。
-
-# 5. （get_image_formula が呼ばれたとき）引数 image_url を検証する
-# → 文字列で空でないかを確認し、不正ならエラーログを出して ValueError を送出。補足：早期バリデーションで後続エラーを防ぐ。
-
-# 6. （検証OKなら）=IMAGE(”{url}”, 4, 80, 80) の文字列を組み立てる
-# → f文字列でURLを埋め込み、4=カスタムサイズ・80x80pxを指定する。補足：シートに貼るだけで画像が表示される形式。
-
-# 7. 生成結果をDEBUGログに出力し、その文字列を返す
-# → 動作確認やデバッグに役立てつつ、呼び出し側へ完成した式を返却。補足：外部通信は一切行わない。
+    @staticmethod  # インスタンスを作らずにクラスから直接呼べるようにする
+    def get_image_formula(image_url: str) -> str:  # 互換用のショートカット。内部で同等処理に委譲する
+        """画像URLからIMAGE式の文字列を生成して返す（互換API）
+        内部的には __init__ によるインスタンス生成を経由し、同一の結果を返す。
+        """
+        downloader_instance: "ImageDownloader" = ImageDownloader()  # 一時的にインスタンスを作成（将来の状態追加にも対応）
+        return downloader_instance.build_image_formula(image_url)  # 本体メソッドに処理を委譲して結果を返す

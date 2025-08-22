@@ -1,189 +1,178 @@
 # ==========================================================
-# import（標準、プロジェクト内モジュール）
+# import（標準、プロジェクト内モジュール）  # ここから必要なモジュールを読み込む
 
-import re  # 正規表現を扱う標準ライブラリ（文字列パターンの照合に使用）
-import logging  # ログ出力のための標準ライブラリ（動作確認やデバッグに活用）
-from datetime import datetime, date, datetime as dt_type  # dt_type= datetime型の別名（dateとの区別用）
-
+import re  # 正規表現のパターン作成やマッチに使用
+import logging  # ログ出力（デバッグ/警告/エラー）に使用
+from datetime import datetime, date, datetime as dt_type, timedelta  # 日付/日時型と時間差計算に使用
+from typing import Any  # 任意型を表す型ヒント
+try:  # まずは本来の定数を読み込む
+    from installer.src.const import date as C_DATE  # 日付解析に用いる正規表現やポリシーを集約した定数
+except Exception:  # 読み込み失敗時はローカルの簡易定義で代替
+    class _FallbackDateConst:  # フォールバック用の定数クラス（必要最小限の設定）
+        RE_YMD_SLASH = r"^\d{4}/\d{1,2}/\d{1,2}$"  # 例: 2025/8/1 の形式にマッチ
+        RE_YMD_DASH  = r"^\d{4}-\d{1,2}-\d{1,2}$"  # 例: 2025-08-01 の形式にマッチ
+        RE_MD_HM     = r"(\d{1,2})/(\d{1,2}) (\d{1,2}):(\d{1,2})"  # 月/日 時:分 を抽出
+        RE_JP_FULL   = r"(\d{1,2})月(\d{1,2})日.*?(\d{1,2})時(\d{1,2})分"  # 日本語の「○月○日○時○分」を抽出
+        ENABLE_YMD_SLASH = True  # スラッシュ形式の解析を有効化
+        ENABLE_YMD_DASH  = True  # ダッシュ形式の解析を有効化
+        ENABLE_MD_HM     = True  # 月/日 時:分 形式の解析を有効化
+        ENABLE_JP_FULL   = True  # 日本語形式の解析を有効化
+        YEAR_POLICY = "current"  # 年の補完方針（current=常に今年）
+        SMART_ROLLOVER_THRESHOLD_DAYS = 45  # ロールオーバー判定に使う閾値（日数）
+    C_DATE = _FallbackDateConst()  # type: ignore  # 実運用の定数が無くても動くよう代入
 
 
 # ==========================================================
-# ログ設定
+# ログ設定  # このモジュールで使うロガーを用意する
 
-logger = logging.getLogger(__name__)  # このモジュール専用のロガー。DEBUG時に詳細ログを出力可能
-
+logger: logging.Logger = logging.getLogger(__name__)  # モジュール名付きのロガー（上位設定を継承）
 
 
 # ==========================================================
 # 関数定義
 
-def log_parse_success(kind: str, src: str, parsed) -> None:  # 目的：どの形式でどう解釈できたかをDEBUGログに残す
-    # パース成功時のデバッグ用ログ出力。kind=形式名、src=元文字列、parsed=解釈結果
-    if logger.isEnabledFor(logging.DEBUG):  # ログレベルがDEBUG以上のときのみ詳細ログを出す
-        logger.debug("終了日時パース（%s）: %s → %s", kind, src, parsed)  # 形式・入力・結果をまとめて出力
-
+def log_parse_success(kind: str, src: str, parsed: Any) -> None:  # 解析成功時の詳細ログを出す
+    if logger.isEnabledFor(logging.DEBUG):  # デバッグレベルが有効な場合のみ冗長ログ
+        logger.debug("終了日時パース（%s）: %s → %s", kind, src, parsed)  # どの形式で何をどう解釈したかを記録
 
 
 # ==========================================================
 # 関数定義
 
-def log_parse_failure(kind: str, src: str, err: Exception, level: int = logging.WARNING) -> None:  # 目的：失敗の詳細を記録
-    # 失敗時は可変のログレベルで出力（WARNING/ERRORなど）。例外型とメッセージも残す
-    logger.log(level, "終了日時パース失敗（%s）: %s (%s: %s)", kind, src, type(err).__name__, err)
-
+def log_parse_failure(kind: str, src: str, err: Exception, level: int = logging.WARNING) -> None:  # 解析失敗時のログ
+    logger.log(level, "終了日時パース失敗（%s）: %s (%s: %s)", kind, src, type(err).__name__, err)  # 形式・元文字列・例外種別を出力
+    # 空行: ここからクラス定義に切り替えるための区切り
 
 
 # ==========================================================
 # class定義
 
-class DateConverter:  # 役割：与えられた値をdatetime.dateへ正規化（フォーマット/型の差異を吸収）
-    """
-    役割：与えられた値を「日付(date)」に正規化するユーティリティ。
-    - 受け取り型：date/datetime/日付文字列/オブジェクト（date()を持つ）など
-    - 返却型：datetime.date（失敗時は例外）
-    """
+class DateConverter:  # 多様な入力（文字列/日付/日時）を date に揃える
+    """任意の値を datetime.date に正規化（フォーマット/型差異を吸収）。"""  # クラスの責務を説明
 
+    # ---- 正規表現（const から注入）----  # 解析で使うパターンを事前にコンパイル
+    _RE_YMD_SLASH: re.Pattern[str] = re.compile(getattr(C_DATE, "RE_YMD_SLASH", r"^\d{4}/\d{1,2}/\d{1,2}$"))  # YYYY/MM/DD
+    _RE_YMD_DASH:  re.Pattern[str] = re.compile(getattr(C_DATE, "RE_YMD_DASH",  r"^\d{4}-\d{1,2}-\d{1,2}$"))  # YYYY-MM-DD
+    _RE_MD_HM:     re.Pattern[str] = re.compile(getattr(C_DATE, "RE_MD_HM",     r"(\d{1,2})/(\d{1,2}) (\d{1,2}):(\d{1,2})"))  # MM/DD HH:MM
+    _RE_JP_FULL:   re.Pattern[str] = re.compile(getattr(C_DATE, "RE_JP_FULL",   r"(\d{1,2})月(\d{1,2})日.*?(\d{1,2})時(\d{1,2})分"))  # 日本語表記
 
+    # ---- 有効/無効 ----  # どの形式の解析を有効にするかフラグで制御
+    _EN_YMD_SLASH: bool = bool(getattr(C_DATE, "ENABLE_YMD_SLASH", True))  # スラッシュ形式を使うか
+    _EN_YMD_DASH:  bool = bool(getattr(C_DATE, "ENABLE_YMD_DASH",  True))  # ダッシュ形式を使うか
+    _EN_MD_HM:     bool = bool(getattr(C_DATE, "ENABLE_MD_HM",     True))  # MM/DD HH:MM を使うか
+    _EN_JP_FULL:   bool = bool(getattr(C_DATE, "ENABLE_JP_FULL",   True))  # 日本語形式を使うか
 
-    # ==========================================================
-    # クラス変数
-
-    _RE_YMD_SLASH = re.compile(r"^\d{4}/\d{1,2}/\d{1,2}$")  # 例: 2025/08/10 の完全一致パターン
-    _RE_YMD_DASH  = re.compile(r"^\d{4}-\d{1,2}-\d{1,2}$")  # 例: 2025-08-10 の完全一致パターン
-    _RE_MD_HM     = re.compile(r"(\d{1,2})/(\d{1,2}) (\d{1,2}):(\d{1,2})")  # 例: 6/28 23:59（年なし）
-    _RE_JP_FULL   = re.compile(r"(\d{1,2})月(\d{1,2})日.*?(\d{1,2})時(\d{1,2})分")  # 例: 6月28日(土) 23時59分（年なし）
-
-
-
-    # ==========================================================
-    # 静的メソッド（インスタンス化不要で利用可能）
-
-    @staticmethod  # 状態を持たない補助処理のため静的メソッド化
-    def _to_date_if_datetime(v) -> date | None:  # 目的：既に日付/日時系ならdateにして返し、該当しなければNone
-        if isinstance(v, date) and not isinstance(v, dt_type):  # 純粋なdate型（datetimeのサブクラスは除外）
-            return v  # すでにdateなのでそのまま返す
-        if isinstance(v, dt_type):  # datetime型であれば
-            return v.date()  # date部分を取り出して返す
-        if hasattr(v, "to_pydatetime"):  # PandasのTimestampなどに対応（Pythonのdatetimeへ変換できる場合）
-            try:
-                return v.to_pydatetime().date()  # pydatetimeにしてからdateへ
-            except Exception:
-                pass  # 変換失敗は無視して次の可能性を試す
-        if hasattr(v, "date") and callable(getattr(v, "date")):  # 任意オブジェクトのdate()対応
-            try:
-                d = v.date()  # date()の戻り値を取得
-                if isinstance(d, date):  # 返却値がdateならOK
-                    return d  # そのまま返す
-            except Exception:
-                pass  # 取得に失敗した場合はNone候補として継続
-        return None  # ここまでで変換できなければNoneを返す
-
+    # ---- 年ポリシー ----  # 年の補完方法（今年固定/スマートロールオーバー等）
+    _YEAR_POLICY: str = str(getattr(C_DATE, "YEAR_POLICY", "current")).lower()  # 年の解釈方針（小文字化して比較）
+    _ROLLOVER_DAYS: int = int(getattr(C_DATE, "SMART_ROLLOVER_THRESHOLD_DAYS", 45))  # スマートロールオーバーの閾値
 
 
     # ==========================================================
-    # 静的メソッド（インスタンス化不要で利用可能）
+    # コンストラクタ
 
-    @staticmethod  # 状態を持たないため静的メソッド
-    def convert(value) -> date:  # 任意の値を受け取り、定義済みのルールでdatetime.dateに正規化
-        # まずは「すでにdate/datetime系か」をチェックし、可能なら即returnで高速化
-        d = DateConverter._to_date_if_datetime(value)  # 早期判定ルート（date/datetime/Timestampなど）
-        if d is not None:  # 早期変換に成功した場合
-            log_parse_success("既に日付/日時型", str(value), d)  # 成功ログ（DEBUG時のみ詳細）
-            return d  # そのまま返す
-
-        s = str(value).strip()  # 文字列に変換し前後空白を除去（以降は文字列として判定）
-        # 空行：ここから形式ごとのパターンマッチで日付化を試みる。
-
-        if DateConverter._RE_YMD_SLASH.fullmatch(s):  # 形式1: YYYY/MM/DD（完全一致）
-            try:
-                d = datetime.strptime(s, "%Y/%m/%d").date()  # フォーマットに従い厳密にパース
-                log_parse_success("YYYY/MM/DD", s, d)  # 成功した形式と結果を記録
-                return d  # dateを返す
-            except Exception as e:  # フォーマット一致でも不正値等で失敗する可能性に備える
-                log_parse_failure("YYYY/MM/DD", s, e, level=logging.ERROR)  # エラーログを出す
-
-        if DateConverter._RE_YMD_DASH.fullmatch(s):  # 形式2: YYYY-MM-DD（完全一致）
-            try:
-                d = datetime.strptime(s, "%Y-%m-%d").date()  # 指定フォーマットでパース
-                log_parse_success("YYYY-MM-DD", s, d)  # 成功ログ
-                return d  # dateを返す
-            except Exception as e:  # 例：月や日が範囲外など
-                log_parse_failure("YYYY-MM-DD", s, e, level=logging.ERROR)  # エラーログ出力
-
-        m_jp = DateConverter._RE_JP_FULL.search(s)  # 形式3: 日本語「6月28日...23時59分」の部分一致を検索
-        if m_jp:  # マッチしたら日本語表記とみなして変換
-            try:
-                month, day, hour, minute = map(int, m_jp.groups())  # 抽出した4つの数値をint化
-                year = datetime.now().year  # 年が省略されているため「今年」を補完（年またぎ注意）
-                dt = datetime(year, month, day, hour, minute)  # datetimeを生成
-                log_parse_success("日本語", s, dt)  # 成功ログ（datetimeで記録）
-                return dt.date()  # dateへ変換して返す
-            except Exception as e:  # 日付として不正な場合など
-                log_parse_failure("日本語", s, e, level=logging.ERROR)  # エラーログ
-
-        m_md = DateConverter._RE_MD_HM.search(s)  # 形式4: 「MM/DD HH:MM」の部分一致を検索
-        if m_md:  # マッチしたらこの形式として処理
-            try:
-                month, day, hour, minute = map(int, m_md.groups())  # 抽出した値をintへ
-                year = datetime.now().year  # 同様に年省略のため「今年」を補完
-                dt = datetime(year, month, day, hour, minute)  # datetime生成
-                log_parse_success("MM/DD HH:MM", s, dt)  # 成功ログ
-                return dt.date()  # dateへ変換して返す
-            except Exception as e:  # 不正値時の保険
-                log_parse_failure("MM/DD HH:MM", s, e, level=logging.ERROR)  # エラーログ
-
-        err = ValueError("フォーマット不一致")  # どの形式にも当てはまらない場合の例外インスタンス
-        log_parse_failure("全形式", s, err, level=logging.ERROR)  # すべての形式で失敗した旨を記録
-        raise ValueError(f"無効な終了日時フォーマット: {s}")  # 呼び出し側へ明示的なエラーを送出
+    def __init__(self) -> None:  # 特に状態は持たないため処理なし
+        pass  # 将来的な拡張に備えたプレースホルダ
 
 
+    # ==========================================================
+    # メソッド定義
+
+    @staticmethod  # インスタンス化せずに利用可能
+    def _to_date_if_datetime(value: Any) -> date | None:  # 値がdate/datetime系ならdateに変換して返す
+        if isinstance(value, date) and not isinstance(value, dt_type):  # 既にdate（ただしdatetimeを除く）
+            return value  # そのまま返す
+        if isinstance(value, dt_type):  # datetimeなら
+            return value.date()  # date部分に変換して返す
+        if hasattr(value, "to_pydatetime"):  # pandas.Timestamp等の互換APIに対応
+            try:  # 変換が失敗しても全体処理に影響しないようtry
+                return value.to_pydatetime().date()  # pandas型→datetime→date
+            except Exception:  # 失敗時は無視して後続へ
+                pass  # 無視
+        if hasattr(value, "date") and callable(getattr(value, "date")):  # 独自型でdate()を持つ場合
+            try:  # 呼び出してdate型を取得できるか試す
+                parsed_date = value.date()  # メソッド呼び出し
+                if isinstance(parsed_date, date):  # 返り値がdate型か確認
+                    return parsed_date  # 有効なら返す
+            except Exception:  # 呼び出し失敗は無視
+                pass  # 無視
+        return None  # dateに寄せられない場合はNone
 
 
+    # ==========================================================
+    # メソッド定義
 
-# ==============
-# 実行の順序
-# ==============
-# 1. モジュール re / logging / datetime（datetime, date, 別名 dt_type）をimportする
-# → 文字列パターン照合・ログ出力・日付/日時型を使えるようにする準備。補足：dt_type は datetime型を指す別名。
+    @classmethod  # クラス変数（ポリシー）参照のためclassmethod
+    def _decide_year(cls, month_num: int, day_num: int) -> int:  # 月日から補完する年を決める
+        today_date = datetime.now().date()  # 今日の日付を基準にする
+        base_year = today_date.year  # 今年の年を取得
+        year_policy = cls._YEAR_POLICY  # 現在の年補完ポリシー
+        if year_policy == "smart_rollover":  # スマートロールオーバー指定時
+            try:  # 無効な月日でも例外で落ちないようにする
+                candidate_date = date(base_year, month_num, day_num)  # 今年の該当月日を作る
+                if candidate_date < (today_date - timedelta(days=cls._ROLLOVER_DAYS)):  # 閾値より十分過去なら
+                    return base_year + 1  # 来年扱いにロールオーバー
+            except Exception:  # 日付生成の失敗は今年扱いにフォールバック
+                # 不正日付は上位で弾かれるのでここでは黙って今年扱い
+                return base_year  # 今年を返す
+        return base_year  # デフォルトは今年
 
-# 2. logger = logging.getLogger(name) を実行する
-# → このモジュール専用ロガーを取得する。補足：以降のDEBUG/INFO/ERRORがここに集約される。
 
-# 3. 関数 log_parse_success(kind, src, parsed) を定義する
-# → パース成功時にDEBUGログを出すヘルパ関数を用意。補足：DEBUGレベル時のみ詳細を記録する。
+    # ==========================================================
+    # メソッド定義
 
-# 4. 関数 log_parse_failure(kind, src, err, level=WARNING) を定義する
-# → パース失敗時に種別・入力・例外の詳細をログ出力するヘルパ関数を用意。補足：警告〜エラーまで可変レベルで記録。
+    @staticmethod  # インスタンス不要で利用できる
+    def convert(value: Any) -> date:  # 任意の値をdateに正規化して返す（失敗時は例外）
+        # 1) 既に date/datetime 系なら早期 return  # まずは簡単に判定できるパスを処理
+        parsed_date = DateConverter._to_date_if_datetime(value)  # 事前変換を試す
+        if parsed_date is not None:  # 変換できた場合
+            log_parse_success("既に日付/日時型", str(value), parsed_date)  # 成功ログ
+            return parsed_date  # そのまま返す
 
-# 5. class DateConverter を定義する
-# → 任意の入力を datetime.date に正規化するユーティリティclassを用意。補足：定義時点ではまだ実行されない。
+        value_str = str(value).strip()  # 文字列として扱い、前後の空白を除去
 
-# 6. class変数に正規表現パターン（_RE_YMD_SLASH/_RE_YMD_DASH/_RE_MD_HM/_RE_JP_FULL）をコンパイルして保持する
-# → 代表的な日付書式を事前にre.compileして高速化。補足：class定義の評価時に一度だけ作られる。
+        # 2) 形式ごとの判定（const の有効/無効に従う）  # 各形式を優先順位なしで順に試す
 
-# 7. 静的メソッド（@staticmethod）_to_date_if_datetime(v) を定義する
-# → 入力がすでに date/datetime/Timestamp等なら date へ早期変換して返す。補足：変換不可なら None を返し次段へ委ねる。
+        if DateConverter._EN_YMD_SLASH and DateConverter._RE_YMD_SLASH.fullmatch(value_str):  # YYYY/MM/DDに完全一致か
+            try:  # 解析を試行
+                parsed_date = datetime.strptime(value_str, "%Y/%m/%d").date()  # パターンに沿ってパース
+                log_parse_success("YYYY/MM/DD", value_str, parsed_date)  # 成功ログ
+                return parsed_date  # 結果を返す
+            except Exception as err:  # パース失敗
+                log_parse_failure("YYYY/MM/DD", value_str, err, level=logging.ERROR)  # 詳細をエラーログ
 
-# 8. 静的メソッド（@staticmethod）convert(value) を定義する
-# → 任意入力を上記ルールで date に正規化し、合致しなければ例外を送出。補足：ここまで“定義”のみで動作はしない。
+        if DateConverter._EN_YMD_DASH and DateConverter._RE_YMD_DASH.fullmatch(value_str):  # YYYY-MM-DDに完全一致か
+            try:  # 解析を試行
+                parsed_date = datetime.strptime(value_str, "%Y-%m-%d").date()  # パターンに沿ってパース
+                log_parse_success("YYYY-MM-DD", value_str, parsed_date)  # 成功ログ
+                return parsed_date  # 結果を返す
+            except Exception as err:  # パース失敗
+                log_parse_failure("YYYY-MM-DD", value_str, err, level=logging.ERROR)  # エラーログ
 
-# 9. （メソッド convert が呼ばれたとき）まず _to_date_if_datetime(value) を試す
-# → 既に日付/日時系なら log_parse_success を出して即 return。補足：最短経路で終了し効率化。
+        if DateConverter._EN_JP_FULL:  # 日本語形式の解析が有効なら試す
+            jp_match = DateConverter._RE_JP_FULL.search(value_str)  # パターンにヒットする部分を検索
+            if jp_match:  # 見つかった場合
+                try:  # グループから月日時分を取得して日時を構築
+                    month_num, day_num, hour_num, minute_num = map(int, jp_match.groups())  # 文字→数値へ
+                    base_year = DateConverter._decide_year(month_num, day_num)  # 補完する年を決定
+                    datetime_obj = datetime(base_year, month_num, day_num, hour_num, minute_num)  # datetime生成
+                    log_parse_success("日本語", value_str, datetime_obj)  # 成功ログ
+                    return datetime_obj.date()  # dateにして返す
+                except Exception as err:  # 生成に失敗した場合
+                    log_parse_failure("日本語", value_str, err, level=logging.ERROR)  # エラーログ
 
-# 10. （メソッド convert が呼ばれたとき）str(value).strip() で文字列化し前後空白を除去する
-# → 以降は文字列表現として書式判定する準備。補足：None等も文字列化して扱う。
+        if DateConverter._EN_MD_HM:  # MM/DD HH:MM 形式の解析が有効なら試す
+            mdhm_match = DateConverter._RE_MD_HM.search(value_str)  # パターンにヒットする部分を検索
+            if mdhm_match:  # 見つかった場合
+                try:  # 月日と時分から日時を構成
+                    month_num, day_num, hour_num, minute_num = map(int, mdhm_match.groups())  # 数値に変換
+                    base_year = DateConverter._decide_year(month_num, day_num)  # 年を補完
+                    datetime_obj = datetime(base_year, month_num, day_num, hour_num, minute_num)  # datetime生成
+                    log_parse_success("MM/DD HH:MM", value_str, datetime_obj)  # 成功ログ
+                    return datetime_obj.date()  # dateにして返す
+                except Exception as err:  # 生成失敗
+                    log_parse_failure("MM/DD HH:MM", value_str, err, level=logging.ERROR)  # エラーログ
 
-# 11. （メソッド convert が呼ばれたとき）“YYYY/MM/DD” 完全一致を _RE_YMD_SLASH で判定→一致なら strptime→date化→成功ログ→return
-# → 正式フォーマットは厳格にパースして返す。補足：値不正時は例外を捕捉して失敗ログのみ出し次の形式へ。
-
-# 12. （メソッド convert が呼ばれたとき）“YYYY-MM-DD” 完全一致を _RE_YMD_DASH で判定→同様にパース→成功ログ→return
-# → ダッシュ区切りの標準日付を処理。補足：こちらも不正値は失敗ログを出して次の形式へ進む。
-
-# 13. （メソッド convert が呼ばれたとき）日本語表記 “M月D日 … H時M分” を _RE_JP_FULL で検索→年は現在年を補完→datetime生成→成功ログ→dateでreturn
-# → 年が書かれていないため「今年」を仮定。補足：年またぎ（前年/翌年）に要注意だが仕様上は今年で処理。
-
-# 14. （メソッド convert が呼ばれたとき）“M/D H:MM” を _RE_MD_HM で検索→現在年を補完→datetime生成→成功ログ→dateでreturn
-# → 米式に近い省略表記を処理。補足：こちらも年省略のため「今年」補完。
-
-# 15. （メソッド convert が呼ばれたとき）どの形式にも当てはまらなければ ValueError を用意→log_parse_failure で全形式失敗を記録→例外送出
-# → 呼び出し側に「不正フォーマット」を明確に知らせる。補足：例外を握りつぶさず上位でハンドリングさせる方針。
+        err = ValueError("フォーマット不一致")  # いずれの形式にも当てはまらない場合のエラー
+        log_parse_failure("全形式", value_str, err, level=logging.ERROR)  # どの形式でも失敗した旨を記録
+        raise ValueError(f"無効な終了日時フォーマット: {value_str}")  # 呼び出し側へ例外を送出
+    
